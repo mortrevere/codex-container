@@ -54,14 +54,14 @@ shift
 case "$command" in
   create)
     prompt="$(render_prompt "$SCRIPT_DIR/prompts/create.md" "" "$@")"
-    exec copilot "${copilot_args[@]}" --model gpt-5.4 -p "$prompt"
+    exec copilot "${copilot_args[@]}" --model gpt-6.1-sol -p "$prompt"
     ;;
   describe|description)
     require_pr_link "$@"
     pr_link="$1"
     shift
     prompt="$(render_prompt "$SCRIPT_DIR/prompts/describe.md" "$pr_link" "$@")"
-    exec copilot "${copilot_args[@]}" --model gpt-5.5 -p "$prompt"
+    exec copilot "${copilot_args[@]}" --model gpt-6.1-sol -p "$prompt"
     ;;
   review)
     require_pr_link "$@"
