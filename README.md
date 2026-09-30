@@ -94,6 +94,7 @@ copilot -p "fix the failing test"  # one-shot prompt
 copilot --resume              # resume from the persistent global-resume dir
 copilot --profile pony        # start with the Ponytail plugin profile
 copilot --profile pr create "focus on the API changes"
+copilot --profile pr --resume=<session-id>  # resume a PR-profile session
 copilot --profile pr describe "https://github.com/OWNER/REPO/pull/123"
 copilot --profile pr review "https://github.com/OWNER/REPO/pull/123"
 COPILOT_PROFILE=pony copilot  # select a profile with an environment variable
@@ -187,7 +188,11 @@ terminal's native color palette rather than a Copilot-specific background.
 
 The `default` profile retains `--resume` support through its
 `global-resume/` directory, allowing its sessions to be resumed from any
-repository or folder. Named profiles do not use this shared resume store.
+repository or folder. Named profiles do not use this shared resume store: pass
+the same profile used to start the session when resuming it, for example
+`copilot --profile pr --resume=<session-id>` (or `copilot --profile pr --resume`
+to select one). Resume arguments go straight to Copilot, bypassing any
+command-style profile dispatcher.
 
 Built-in profiles:
 

@@ -28,7 +28,7 @@ CALLER_PWD="$(pwd)"
 HOST_COPILOT_HOME="${HOST_COPILOT_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/copilot-cli}"
 PROFILE_NAME="${COPILOT_PROFILE:-default}"
 COPILOT_ARGS=()
-USE_GLOBAL_RESUME=false
+RESUME_REQUESTED=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -49,7 +49,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --resume|--resume=*|-r|-r=*)
-      USE_GLOBAL_RESUME=true
+      RESUME_REQUESTED=true
       COPILOT_ARGS+=("$1")
       shift
       ;;
@@ -102,7 +102,7 @@ PROFILE_COMMAND="$(profile_optional_file command.sh)"
 PROFILE_HOOKS_REL="${PROFILE_HOOKS#"${SCRIPT_DIR}/profiles/"}"
 PROFILE_INSTRUCTIONS_REL="${PROFILE_INSTRUCTIONS#"${SCRIPT_DIR}/profiles/"}"
 PROFILE_SETTINGS_REL="${PROFILE_SETTINGS#"${SCRIPT_DIR}/profiles/"}"
-if [ -n "${PROFILE_COMMAND}" ]; then
+if [ -n "${PROFILE_COMMAND}" ] && [ "${RESUME_REQUESTED}" = false ]; then
   PROFILE_COMMAND_REL="${PROFILE_COMMAND#"${SCRIPT_DIR}/profiles/"}"
 else
   PROFILE_COMMAND_REL=""
@@ -308,7 +308,7 @@ elif ! COPILOT_TOKEN="$(gh auth token 2>/dev/null)" || [ -z "${COPILOT_TOKEN}" ]
 fi
 
 if [[ "${1:-}" != "bash" ]]; then
-  if [ "${USE_GLOBAL_RESUME}" = true ] && [ "${PROFILE_NAME}" = "default" ]; then
+  if [ "${RESUME_REQUESTED}" = true ] && [ "${PROFILE_NAME}" = "default" ]; then
     set -- -C /copilot-state/global-resume --add-dir "${WORKDIR_IN_CONTAINER}" "$@"
   fi
   set -- bash /copilot-container-init --allow-all "$@"

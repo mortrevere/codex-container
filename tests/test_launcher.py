@@ -246,6 +246,10 @@ esac
     def test_resume_profile_and_bash_arguments(self):
         self.engine("docker")
         self.assert_success(self.launch("--resume"))
+        self.assertEqual(self.runs()[-1][-8:], [
+            "bash", "/copilot-container-init", "--allow-all",
+            "-C", "/copilot-state/global-resume", "--add-dir", "/workspace", "--resume",
+        ])
         self.assertIn("/copilot-state/global-resume", self.runs()[-1])
         self.assertIn("/copilot-state/global-resume", self.runs()[1])
         self.assert_success(self.launch("--profile", "pony", "--resume"))
@@ -253,6 +257,26 @@ esac
         self.assertIn(f"{self.state}/profiles/pony:/copilot-state", self.runs()[-1])
         self.assert_success(self.launch("bash"))
         self.assertEqual(self.runs()[-1][-2:], ["copilot-container", "bash"])
+
+    def test_resume_bypasses_profile_command_and_preserves_arguments(self):
+        self.engine("docker")
+        for args, forwarded in (
+            (("--profile", "pr", "--resume=session-id"), ["--resume=session-id"]),
+            (("--resume=session-id", "--profile", "pr"), ["--resume=session-id"]),
+            (("--profile=pr", "--resume"), ["--resume"]),
+            (("--profile", "pr", "-r=session-id"), ["-r=session-id"]),
+            (("--profile", "pr", "-r", "session-id"), ["-r", "session-id"]),
+        ):
+            with self.subTest(args=args):
+                self.assert_success(self.launch(*args))
+                run = self.runs()[-1]
+                self.assertIn(f"{self.state}/profiles/pr:/copilot-state", run)
+                self.assertIn("COPILOT_PROFILE_COMMAND=", run)
+                self.assertNotIn("COPILOT_PROFILE_COMMAND=/copilot-profiles/pr/command.sh", run)
+                self.assertNotIn("/copilot-state/global-resume", run)
+                self.assertEqual(run[-(3 + len(forwarded)):], [
+                    "bash", "/copilot-container-init", "--allow-all", *forwarded,
+                ])
 
     def test_profile_command_is_wired_when_present(self):
         self.engine("docker")
