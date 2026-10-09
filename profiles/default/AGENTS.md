@@ -10,10 +10,6 @@ and a mounted `.gitconfig`). When creating commits:
 
 Commits must be authored solely as the host user.
 
-# Subagents
-
-Never use Claude subagents. Prefer gemini-3.8-flash models for most subagents tasks.
-
 # Tooling
 
 You are allowed to install standard development/testing tooling locally without approval, as you are running in a container that will be destroyed at the end of the session.

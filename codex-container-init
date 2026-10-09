@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p "$HOME" "$CODEX_HOME" "$CODEX_AUTH_HOME"
+if [ -s "$CODEX_PROFILE_HOOKS" ]; then
+  cp "$CODEX_PROFILE_HOOKS" "$CODEX_HOME/hooks.json"
+else
+  rm -f -- "$CODEX_HOME/hooks.json"
+fi
+cp "$CODEX_PROFILE_INSTRUCTIONS" "$CODEX_HOME/AGENTS.md"
+cp "$CODEX_PROFILE_CONFIG" "$CODEX_HOME/container.config.toml"
+
+args=("$@")
+cli_command=""
+cli_subcommand=""
+for ((index = 0; index < ${#args[@]}; index++)); do
+  case "${args[index]}" in
+    -c|--config|-m|--model|-C|--cd|-s|--sandbox|-a|--ask-for-approval|-p|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|--add-dir)
+      index=$((index + 1))
+      ;;
+    --)
+      break
+      ;;
+    -*)
+      ;;
+    *)
+      cli_command="${args[index]}"
+      cli_subcommand="${args[index + 1]:-}"
+      break
+      ;;
+  esac
+done
+
+# Login/logout must operate on the shared directory: logout unlinks auth.json.
+case "$cli_command" in
+  login|logout)
+    export CODEX_HOME="$CODEX_AUTH_HOME"
+    exec codex -c 'cli_auth_credentials_store="file"' "$@"
+    ;;
+esac
+ln -sfn "$CODEX_AUTH_HOME/auth.json" "$CODEX_HOME/auth.json"
+
+if [ "${1:-}" = bash ]; then
+  shift
+  exec bash "$@"
+fi
+
+# Codex does not accept configuration profiles for these management commands.
+case "$cli_command" in
+  plugin|features|completion|doctor|app-server|remote-control|cloud|apply|execpolicy|migrate-rollouts)
+    exec codex -c 'cli_auth_credentials_store="file"' "$@"
+    ;;
+  debug)
+    if [ "$cli_subcommand" != prompt-input ]; then
+      exec codex -c 'cli_auth_credentials_store="file"' "$@"
+    fi
+    ;;
+esac
+
+# Trust the launch directory and any --cd target on every invocation. Include
+# parent directories so project configuration discovered there is loaded too.
+# Keep this in CLI defaults rather than rewriting private persisted config.
+export CODEX_CONTAINER_TRUST_CONFIG
+CODEX_CONTAINER_TRUST_CONFIG="$(python3 - "$@" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+cwd = Path.cwd()
+target = cwd
+args = iter(sys.argv[1:])
+for arg in args:
+    if arg == "--":
+        break
+    if arg in ("-c", "--config", "-m", "--model", "-p", "--profile",
+               "-s", "--sandbox", "-a", "--ask-for-approval", "--enable",
+               "--disable", "--remote", "--remote-auth-token-env",
+               "--local-provider", "--add-dir", "-i", "--image"):
+        next(args, None)
+    elif arg in ("-C", "--cd"):
+        target = cwd / next(args, ".")
+    elif arg.startswith("--cd="):
+        target = cwd / arg.partition("=")[2]
+    elif arg.startswith("-C"):
+        target = cwd / arg[2:]
+
+paths = set()
+for directory in (cwd, target.resolve()):
+    paths.update((directory, *directory.parents))
+print("projects={" + ",".join(
+    json.dumps(str(path), ensure_ascii=False) + '={trust_level="trusted"}'
+    for path in sorted(paths)
+) + "}")
+PY
+)"
+
+bash "$CODEX_PROFILE_INIT"
+if [ -n "${CODEX_PROFILE_COMMAND:-}" ] && [ -s "$CODEX_PROFILE_COMMAND" ]; then
+  exec bash "$CODEX_PROFILE_COMMAND" "$@"
+fi
+exec codex --profile container --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust -c 'cli_auth_credentials_store="file"' -c "$CODEX_CONTAINER_TRUST_CONFIG" "$@"

@@ -30,7 +30,7 @@ elif args[0] == "run" and "-it" not in args:
         sys.exit(1)
     if os.environ.get("SKIP_PROBE"):
         sys.exit(0)
-    image_index = args.index(os.environ.get("IMAGE_NAME", "copilot-container"))
+    image_index = args.index(os.environ.get("IMAGE_NAME", "codex-container"))
     command = args[image_index + 1:]
     for index, arg in enumerate(command):
         for source, target in mounts:

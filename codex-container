@@ -1,34 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Host-side copilot-container wrapper.
+# Host-side codex-container wrapper.
 #
-# It builds (if needed) and runs the GitHub Copilot CLI inside a container,
+# It builds (if needed) and runs the OpenAI Codex CLI inside a container,
 # mounting the current directory as /workspace. It forwards your host Git
 # identity and GitHub token into the container using Podman or Docker.
 #
 # Configuration (all optional, via environment variables):
 #   CONTAINER_ENGINE    podman or docker                (default: auto, prefer podman)
-#   IMAGE_NAME          image tag to build/run          (default: copilot-container)
+#   IMAGE_NAME          image tag to build/run          (default: codex-container)
 #   DOCKERFILE_PATH     path to Dockerfile             (default: next to this script)
-#   HOST_COPILOT_HOME   host dir for persistent state   (default: XDG_DATA_HOME/copilot-cli)
-#   COPILOT_PROFILE     profile selected at startup     (default: default)
-#   COPILOT_NTFY_TOPIC  ntfy.sh topic for notifications (default: empty / disabled)
-#   COPILOT_GITHUB_TOKEN / GH_TOKEN
+#   HOST_CODEX_HOME     host dir for persistent state   (default: XDG_DATA_HOME/codex-cli)
+#   CODEX_PROFILE       profile selected at startup     (default: default)
+#   CODEX_NTFY_TOPIC    ntfy.sh topic for notifications (default: empty / disabled)
+#   CODEX_GITHUB_TOKEN / GH_TOKEN
 #                       GitHub token (falls back to `gh auth token`)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-IMAGE_NAME="${IMAGE_NAME:-copilot-container}"
+IMAGE_NAME="${IMAGE_NAME:-codex-container}"
 WORKDIR_IN_CONTAINER="/workspace"
 
 UID_VALUE="$(id -u)"
 GID_VALUE="$(id -g)"
 CALLER_PWD="$(pwd)"
-HOST_COPILOT_HOME="${HOST_COPILOT_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/copilot-cli}"
-PROFILE_NAME="${COPILOT_PROFILE:-default}"
-COPILOT_ARGS=()
-RESUME_REQUESTED=false
+HOST_CODEX_HOME="${HOST_CODEX_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/codex-cli}"
+PROFILE_NAME="${CODEX_PROFILE:-default}"
+CODEX_ARGS=()
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -48,13 +47,12 @@ while [ "$#" -gt 0 ]; do
       fi
       shift
       ;;
-    --resume|--resume=*|-r|-r=*)
-      RESUME_REQUESTED=true
-      COPILOT_ARGS+=("$1")
-      shift
+    --)
+      CODEX_ARGS+=("$@")
+      break
       ;;
     *)
-      COPILOT_ARGS+=("$1")
+      CODEX_ARGS+=("$1")
       shift
       ;;
   esac
@@ -96,17 +94,13 @@ profile_optional_file() {
 
 PROFILE_INIT="$(profile_file init.sh)"
 PROFILE_HOOKS="$(profile_file hooks.json)"
-PROFILE_INSTRUCTIONS="$(profile_file copilot-instructions.md)"
-PROFILE_SETTINGS="$(profile_file settings.json)"
+PROFILE_INSTRUCTIONS="$(profile_file AGENTS.md)"
+PROFILE_CONFIG="$(profile_file config.toml)"
 PROFILE_COMMAND="$(profile_optional_file command.sh)"
 PROFILE_HOOKS_REL="${PROFILE_HOOKS#"${SCRIPT_DIR}/profiles/"}"
 PROFILE_INSTRUCTIONS_REL="${PROFILE_INSTRUCTIONS#"${SCRIPT_DIR}/profiles/"}"
-PROFILE_SETTINGS_REL="${PROFILE_SETTINGS#"${SCRIPT_DIR}/profiles/"}"
-if [ -n "${PROFILE_COMMAND}" ] && [ "${RESUME_REQUESTED}" = false ]; then
-  PROFILE_COMMAND_REL="${PROFILE_COMMAND#"${SCRIPT_DIR}/profiles/"}"
-else
-  PROFILE_COMMAND_REL=""
-fi
+PROFILE_CONFIG_REL="${PROFILE_CONFIG#"${SCRIPT_DIR}/profiles/"}"
+PROFILE_COMMAND_REL="${PROFILE_COMMAND#"${SCRIPT_DIR}/profiles/"}"
 
 ENGINE="${CONTAINER_ENGINE:-}"
 if [ -z "${ENGINE}" ]; then
@@ -168,7 +162,7 @@ if [ ! -f "${DOCKERFILE_PATH}" ]; then
   exit 1
 fi
 
-set -- "${COPILOT_ARGS[@]}"
+set -- "${CODEX_ARGS[@]}"
 
 if [[ "${1:-}" == "update" ]]; then
   BACKUP_TAG="backup-$(date +%d%m%Y)"
@@ -183,7 +177,7 @@ if [[ "${1:-}" == "update" ]]; then
   exit 0
 fi
 
-# Build the image only when it's missing. Use `copilot-container update` to
+# Build the image only when it's missing. Use `codex-container update` to
 # force a rebuild once the image exists.
 if ! "${ENGINE}" image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
   echo "Building ${IMAGE_NAME} (first run) ..." >&2
@@ -193,24 +187,22 @@ if ! "${ENGINE}" image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
     "$(dirname "${DOCKERFILE_PATH}")" >/dev/null
 fi
 
-PROFILE_COPILOT_HOME="${HOST_COPILOT_HOME}/profiles/${PROFILE_NAME}"
+PROFILE_CODEX_HOME="${HOST_CODEX_HOME}/profiles/${PROFILE_NAME}"
+SHARED_AUTH_HOME="${HOST_CODEX_HOME}/auth"
 
 # Create the client-side paths for local engines. Pre-create the directories
 # needed at launch so setup does not depend on mkdir through the bind mount.
-mkdir -p "${PROFILE_COPILOT_HOME}/hooks"
-chmod u+rwx "${PROFILE_COPILOT_HOME}" "${PROFILE_COPILOT_HOME}/hooks"
+mkdir -p "${PROFILE_CODEX_HOME}/sessions" "${SHARED_AUTH_HOME}"
+chmod u+rwx "${PROFILE_CODEX_HOME}" "${PROFILE_CODEX_HOME}/sessions"
+chmod 700 "${SHARED_AUTH_HOME}"
 
-if [ "${PROFILE_NAME}" = "default" ]; then
-  mkdir -p "${PROFILE_COPILOT_HOME}/global-resume"
-  chmod u+rwx "${PROFILE_COPILOT_HOME}/global-resume"
-fi
-
-if [ ! -w "${PROFILE_COPILOT_HOME}" ]; then
-  echo "error: profile state is not writable: ${PROFILE_COPILOT_HOME}" >&2
-  echo "       fix host ownership/permissions before launching Copilot" >&2
+if [ ! -w "${PROFILE_CODEX_HOME}" ]; then
+  echo "error: profile state is not writable: ${PROFILE_CODEX_HOME}" >&2
+  echo "       fix host ownership/permissions before launching Codex" >&2
   exit 1
 fi
-PROFILE_COPILOT_HOME="$(cd "${PROFILE_COPILOT_HOME}" && pwd)"
+PROFILE_CODEX_HOME="$(cd "${PROFILE_CODEX_HOME}" && pwd)"
+SHARED_AUTH_HOME="$(cd "${SHARED_AUTH_HOME}" && pwd)"
 
 # Carry the host Git identity into the container so commits use the same
 # author as the surrounding host checkout.
@@ -233,7 +225,7 @@ fi
 # Mounted outside of /tmp/home: bind-mounting directly into /tmp/home
 # would make the container engine auto-create /tmp/home as root before
 # the container's non-root user starts, breaking later mkdir calls
-# (e.g. copilot's own /tmp/home/.cache). GIT_CONFIG_GLOBAL (git >= 2.32)
+# (e.g. Codex's own /tmp/home/.cache). GIT_CONFIG_GLOBAL (git >= 2.32)
 # lets us point git at it without touching /tmp/home at all.
 GITCONFIG_MOUNT_ARGS=()
 if [ -f "${HOME}/.gitconfig" ]; then
@@ -249,9 +241,9 @@ check_bind_write() (
   host_path="$1"
   container_path="$2"
   shift 2
-  if ! probe_dir="$(mktemp -d "${host_path}/.copilot-write-test.XXXXXXXXXX")"; then
+  if ! probe_dir="$(mktemp -d "${host_path}/.codex-write-test.XXXXXXXXXX")"; then
     echo "error: cannot prepare ${container_path} write probe in ${host_path}" >&2
-    echo "       fix host ownership/permissions before launching Copilot" >&2
+    echo "       fix host ownership/permissions before launching Codex" >&2
     exit 1
   fi
   trap 'rm -f -- "${probe_dir}/owner"; rmdir -- "${probe_dir}"' EXIT
@@ -268,7 +260,7 @@ check_bind_write() (
       probe=""
       trap '\''[ -z "$probe" ] || rm -f -- "$probe"'\'' EXIT
       for directory in "$@"; do
-        probe="$(mktemp "$directory/.copilot-write-test.XXXXXXXXXX")"
+        probe="$(mktemp "$directory/.codex-write-test.XXXXXXXXXX")"
         rm -f -- "$probe"
         probe=""
       done
@@ -287,49 +279,39 @@ check_bind_write() (
 )
 
 check_bind_write "${CALLER_PWD}" "${WORKDIR_IN_CONTAINER}"
-STATE_WRITE_DIRS=(/copilot-state/hooks)
-if [ "${PROFILE_NAME}" = default ]; then
-  STATE_WRITE_DIRS+=(/copilot-state/global-resume)
-fi
-check_bind_write "${PROFILE_COPILOT_HOME}" /copilot-state "${STATE_WRITE_DIRS[@]}"
+check_bind_write "${PROFILE_CODEX_HOME}" /codex-state /codex-state/sessions
+check_bind_write "${SHARED_AUTH_HOME}" /codex-auth
 
-if [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then
-  COPILOT_TOKEN="${COPILOT_GITHUB_TOKEN}"
+GITHUB_TOKEN=""
+if [ -n "${CODEX_GITHUB_TOKEN:-}" ]; then
+  GITHUB_TOKEN="${CODEX_GITHUB_TOKEN}"
 elif [ -n "${GH_TOKEN:-}" ]; then
-  COPILOT_TOKEN="${GH_TOKEN}"
-elif ! command -v gh >/dev/null 2>&1; then
-  echo "error: no GitHub token available" >&2
-  echo "       set COPILOT_GITHUB_TOKEN or GH_TOKEN, or install the gh CLI and run 'gh auth login'" >&2
-  exit 1
-elif ! COPILOT_TOKEN="$(gh auth token 2>/dev/null)" || [ -z "${COPILOT_TOKEN}" ]; then
-  echo "error: could not obtain a GitHub token from gh" >&2
-  echo "       run 'gh auth login', or set COPILOT_GITHUB_TOKEN or GH_TOKEN" >&2
-  exit 1
+  GITHUB_TOKEN="${GH_TOKEN}"
+elif command -v gh >/dev/null 2>&1; then
+  if ! GITHUB_TOKEN="$(gh auth token)" || [ -z "${GITHUB_TOKEN}" ]; then
+    echo "warning: no GitHub token available; PR workflows require GH_TOKEN or 'gh auth login' on the host" >&2
+    GITHUB_TOKEN=""
+  fi
 fi
 
-if [[ "${1:-}" != "bash" ]]; then
-  if [ "${RESUME_REQUESTED}" = true ] && [ "${PROFILE_NAME}" = "default" ]; then
-    set -- -C /copilot-state/global-resume --add-dir "${WORKDIR_IN_CONTAINER}" "$@"
-  fi
-  set -- bash /copilot-container-init --allow-all "$@"
-fi
+set -- bash /codex-container-init "$@"
 
 RUN_ARGS=(
   --rm
   -it
   -w "${WORKDIR_IN_CONTAINER}"
   -e HOME=/tmp/home
-  -e COPILOT_HOME=/copilot-state
-  -e COPILOT_GITHUB_TOKEN="${COPILOT_TOKEN}"
-  -e GH_TOKEN="${COPILOT_TOKEN}"
-  -e COPILOT_NTFY_TOPIC="${COPILOT_NTFY_TOPIC:-}"
-  -e COPILOT_PROFILE_INIT="/copilot-profiles/${PROFILE_INIT#"${SCRIPT_DIR}/profiles/"}"
-  -e COPILOT_PROFILE_HOOKS="/copilot-profiles/${PROFILE_HOOKS_REL}"
-  -e COPILOT_PROFILE_INSTRUCTIONS="/copilot-profiles/${PROFILE_INSTRUCTIONS_REL}"
-  -e COPILOT_PROFILE_SETTINGS="/copilot-profiles/${PROFILE_SETTINGS_REL}"
-  -e COPILOT_PROFILE_COMMAND="${PROFILE_COMMAND_REL:+/copilot-profiles/${PROFILE_COMMAND_REL}}"
-  -v "${SCRIPT_DIR}/profiles:/copilot-profiles:ro"
-  -v "${SCRIPT_DIR}/copilot-container-init:/copilot-container-init:ro"
+  -e CODEX_HOME=/codex-state
+  -e CODEX_AUTH_HOME=/codex-auth
+  -e GH_TOKEN="${GITHUB_TOKEN}"
+  -e CODEX_NTFY_TOPIC="${CODEX_NTFY_TOPIC:-}"
+  -e CODEX_PROFILE_INIT="/codex-profiles/${PROFILE_INIT#"${SCRIPT_DIR}/profiles/"}"
+  -e CODEX_PROFILE_HOOKS="/codex-profiles/${PROFILE_HOOKS_REL}"
+  -e CODEX_PROFILE_INSTRUCTIONS="/codex-profiles/${PROFILE_INSTRUCTIONS_REL}"
+  -e CODEX_PROFILE_CONFIG="/codex-profiles/${PROFILE_CONFIG_REL}"
+  -e CODEX_PROFILE_COMMAND="${PROFILE_COMMAND_REL:+/codex-profiles/${PROFILE_COMMAND_REL}}"
+  -v "${SCRIPT_DIR}/profiles:/codex-profiles:ro"
+  -v "${SCRIPT_DIR}/codex-container-init:/codex-container-init:ro"
   --network=host
   ${GIT_IDENTITY_ARGS[@]+"${GIT_IDENTITY_ARGS[@]}"}
   ${GITCONFIG_MOUNT_ARGS[@]+"${GITCONFIG_MOUNT_ARGS[@]}"}
@@ -338,7 +320,8 @@ RUN_ARGS=(
 RUN_ARGS+=(
   "${CONTAINER_IDENTITY_ARGS[@]}"
   -v "${CALLER_PWD}:${WORKDIR_IN_CONTAINER}"
-  -v "${PROFILE_COPILOT_HOME}:/copilot-state"
+  -v "${PROFILE_CODEX_HOME}:/codex-state"
+  -v "${SHARED_AUTH_HOME}:/codex-auth"
 )
 
 exec "${ENGINE}" run "${RUN_ARGS[@]}" "${IMAGE_NAME}" "$@"

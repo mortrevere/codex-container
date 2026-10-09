@@ -29,25 +29,26 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
 
 RUN /usr/local/bin/uv tool install ruff
 
-RUN curl -fsSL https://gh.io/copilot-install | bash
+RUN curl -fsSL https://chatgpt.com/codex/install.sh \
+    | env CODEX_INSTALL_DIR=/usr/local/bin CODEX_HOME=/opt/codex CODEX_NON_INTERACTIVE=1 sh \
+    && codex --version
 
 # ntfy.sh notification hooks. The topic is provided at *runtime* via the
-# COPILOT_NTFY_TOPIC environment variable (see the copilot-container wrapper),
+# CODEX_NTFY_TOPIC environment variable (see the codex-container wrapper),
 # so the image itself stays generic and shareable. When the variable is empty,
 # both scripts are a no-op.
-RUN mkdir -p /usr/local/bin/copilot-hooks \
+RUN mkdir -p /usr/local/bin/codex-hooks \
     && printf '%s\n' \
         '#!/usr/bin/env bash' \
-        '# Backgrounded so this never adds latency when used from a blocking hook (e.g. preToolUse).' \
-        '[ -z "${COPILOT_NTFY_TOPIC:-}" ] && exit 0' \
-        '(curl -fsS -d "Copilot is waiting for me" "https://ntfy.sh/${COPILOT_NTFY_TOPIC}" >/dev/null 2>&1 &) || true' \
-        > /usr/local/bin/copilot-hooks/notify-waiting.sh \
+        '[ -z "${CODEX_NTFY_TOPIC:-}" ] && exit 0' \
+        'curl --max-time 5 -fsS -d "Codex is waiting for me" "https://ntfy.sh/${CODEX_NTFY_TOPIC}" >/dev/null' \
+        > /usr/local/bin/codex-hooks/notify-waiting.sh \
     && printf '%s\n' \
         '#!/usr/bin/env bash' \
-        '[ -z "${COPILOT_NTFY_TOPIC:-}" ] && exit 0' \
-        'curl -fsS -d "Copilot is done" "https://ntfy.sh/${COPILOT_NTFY_TOPIC}" >/dev/null 2>&1 || true' \
-        > /usr/local/bin/copilot-hooks/notify-done.sh \
-    && chmod +x /usr/local/bin/copilot-hooks/notify-waiting.sh /usr/local/bin/copilot-hooks/notify-done.sh
+        '[ -z "${CODEX_NTFY_TOPIC:-}" ] && exit 0' \
+        'curl --max-time 5 -fsS -d "Codex is done" "https://ntfy.sh/${CODEX_NTFY_TOPIC}" >/dev/null' \
+        > /usr/local/bin/codex-hooks/notify-done.sh \
+    && chmod +x /usr/local/bin/codex-hooks/notify-waiting.sh /usr/local/bin/codex-hooks/notify-done.sh
 
 WORKDIR /workspace
 CMD ["bash"]

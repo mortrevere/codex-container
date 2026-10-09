@@ -3,18 +3,33 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-copilot_args=()
-if [ "${1:-}" = "--allow-all" ]; then
-  copilot_args+=("$1")
-  shift
-fi
+codex_args=(--profile container --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust -c 'cli_auth_credentials_store="file"' -c "${CODEX_CONTAINER_TRUST_CONFIG:-projects.\"/workspace\".trust_level=\"trusted\"}")
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --model|-m|--config|-c)
+      if [ "$#" -lt 2 ]; then
+        echo "error: $1 requires a value" >&2
+        exit 2
+      fi
+      codex_args+=("$1" "$2")
+      shift 2
+      ;;
+    --model=*|--config=*)
+      codex_args+=("$1")
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 usage() {
   cat >&2 <<'USAGE'
 usage:
-  copilot-container --profile pr create "[extra instruction]"
-  copilot-container --profile pr describe "<PR link>" "[extra instruction]"
-  copilot-container --profile pr review "<PR link>" "[extra instruction]"
+  codex-container --profile pr [--model MODEL] create "[extra instruction]"
+  codex-container --profile pr [--model MODEL] describe "<PR link>" "[extra instruction]"
+  codex-container --profile pr [--model MODEL] review "<PR link>" "[extra instruction]"
 USAGE
 }
 
@@ -48,30 +63,29 @@ if [ "$#" -lt 1 ]; then
   exit 2
 fi
 
-command="$1"
-shift
-
-case "$command" in
+case "$1" in
   create)
+    shift
     prompt="$(render_prompt "$SCRIPT_DIR/prompts/create.md" "" "$@")"
-    exec copilot "${copilot_args[@]}" --model gpt-6.1-sol -p "$prompt"
+    exec codex exec "${codex_args[@]}" "$prompt"
     ;;
   describe|description)
+    shift
     require_pr_link "$@"
     pr_link="$1"
     shift
     prompt="$(render_prompt "$SCRIPT_DIR/prompts/describe.md" "$pr_link" "$@")"
-    exec copilot "${copilot_args[@]}" --model gpt-6.1-sol -p "$prompt"
+    exec codex exec "${codex_args[@]}" "$prompt"
     ;;
   review)
+    shift
     require_pr_link "$@"
     pr_link="$1"
     shift
     prompt="$(render_prompt "$SCRIPT_DIR/prompts/review.md" "$pr_link" "$@")"
-    exec copilot "${copilot_args[@]}" --model gemini-3.8-flash -p "$prompt"
+    exec codex exec "${codex_args[@]}" "$prompt"
     ;;
   *)
-    usage
-    exit 2
+    exec codex "${codex_args[@]}" "$@"
     ;;
 esac

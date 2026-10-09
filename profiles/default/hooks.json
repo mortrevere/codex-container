@@ -1,27 +1,40 @@
 {
-  "version": 1,
   "hooks": {
-    "notification": [
+    "PermissionRequest": [
       {
-        "type": "command",
-        "matcher": "permission_prompt|elicitation_dialog|agent_idle",
-        "bash": "/usr/local/bin/copilot-hooks/notify-waiting.sh",
-        "timeoutSec": 10
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/codex-hooks/notify-waiting.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
       }
     ],
-    "preToolUse": [
+    "PreToolUse": [
       {
-        "type": "command",
-        "matcher": "ask_user",
-        "bash": "/usr/local/bin/copilot-hooks/notify-waiting.sh",
-        "timeoutSec": 5
+        "matcher": "^request_user_input$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/codex-hooks/notify-waiting.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
       }
     ],
-    "agentStop": [
+    "Stop": [
       {
-        "type": "command",
-        "bash": "/usr/local/bin/copilot-hooks/notify-done.sh",
-        "timeoutSec": 10
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/codex-hooks/notify-done.sh",
+            "async": true,
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

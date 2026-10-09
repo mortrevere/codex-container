@@ -1,259 +1,262 @@
-# copilot-container
+# codex-container
 
-Run the [GitHub Copilot CLI](https://github.com/github/copilot-cli) inside a
-disposable container. Your current directory is mounted as `/workspace`, your
-host Git identity and GitHub token are forwarded in, and the CLI runs with
-`--allow-all`. It can modify files in the mounted workspace and profile state.
+Run the [OpenAI Codex CLI](https://github.com/openai/codex) inside a disposable
+container with profiles. Your current directory is mounted as `/workspace`,
+your host Git identity is forwarded in, and Codex runs with
+`--dangerously-bypass-approvals-and-sandbox`. It can modify files in the mounted
+workspace and persistent state. Enabled hooks and launch folders are trusted
+automatically, without startup trust prompts.
 
 Works with **Podman** or **Docker Engine** on Linux. The wrapper prefers Podman
 when both are installed; set `CONTAINER_ENGINE=docker` to select Docker explicitly.
+Use a local engine: bind-mounted paths and user IDs must refer to this host.
+
+This is a convenience wrapper, not a hardened security boundary. Codex has
+access to the mounted workspace, profile state, shared credentials, any
+forwarded GitHub token, and the network. Tools installed in the container
+disappear when it exits; workspace changes and Codex state persist on the host.
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/mortrevere/copilot-container.git
-cd copilot-container
-./copilot-container
+git clone https://github.com/mortrevere/codex-container.git
+cd codex-container
+./codex-container login --device-auth
+./codex-container
 ```
 
-Docker must be running and accessible to your user (`docker info` must succeed).
-The wrapper uses your current Docker context, including a rootless context.
-Use a local engine: bind-mounted paths and user IDs must refer to this host.
+Open the login URL on your host and enter the device code. Device login may
+need enabling in your ChatGPT security settings. `./codex-container login`
+also supports browser login; open its printed URL on the host. Browser callback
+reachability depends on your container engine's host-network behavior.
 
-This is meant for using Copilot CLI without letting it install tools, write
-config, or leave temporary state directly on your host machine. It is not a
-perfect sandbox: Copilot still has access to the mounted workspace, forwarded
-GitHub token, profile state, and network. Treat it as a convenience and safety
-wrapper, not as a hardened security boundary.
+The first invocation builds the image automatically. Docker must be running
+and accessible to your user (`docker info` must succeed).
 
-Highlights:
+## Installation
 
-- Works with **Podman** or **Docker Engine**, preferring Podman when available.
-- Mounts the current directory at `/workspace` and keeps generated files owned
-  by your host user where the container engine allows it.
-- Forwards your host Git identity so commits made by Copilot are authored as
-  you.
-- Resolves a GitHub token from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or your local
-  `gh auth token`, so you can pass a more limited token if desired.
-- Supports `--profile` for custom instructions, settings, hooks, skills, and
-  per-profile persistent state. A `pony` profile is included as an example.
-- Sends optional desktop/mobile notifications through
-  [ntfy.sh](https://ntfy.sh) when Copilot is done or waiting for input.
-- Includes `gh`, `uv`, and `ruff` in the image; additional tools installed
-  inside the container disappear when the session ends.
-- Provides `copilot bash` for debugging inside the container and
-  `copilot update` for a clean image rebuild with a backup tag.
-- Checks workspace and profile-state writability before launching, and does not
-  mount the Docker socket or request privileged mode.
-
-## Files
-
-- `Dockerfile` — the container image.
-- `copilot-container` — the host-side wrapper script that builds/runs the image.
-- `profiles/` — built-in profiles, each containing `init.sh`, `hooks.json`, and
-  `copilot-instructions.md`, and `settings.json`.
-
-## 1. Build the image
-
-From the directory containing these files:
+Keep `codex-container`, `codex-container-init`, `Dockerfile`, and `profiles/`
+together. For example:
 
 ```bash
-podman build . -f Dockerfile -t copilot-container
+mkdir -p ~/.local/lib/codex-container
+cp -a codex-container codex-container-init Dockerfile profiles \
+  ~/.local/lib/codex-container/
+```
+
+Add this to `~/.bashrc` or `~/.zshrc`:
+
+```bash
+alias codex='~/.local/lib/codex-container/codex-container'
+```
+
+Alternatively, point the alias directly at this checkout's `codex-container`.
+Installing only the wrapper is insufficient: it also needs the initialization
+script and profile files next to it.
+
+To build manually:
+
+```bash
+podman build . -f Dockerfile -t codex-container
 # Or:
-docker build . -f Dockerfile -t copilot-container
+docker build . -f Dockerfile -t codex-container
 ```
 
-The wrapper also builds the image automatically on first run, so this step is
-optional — but doing it once up front avoids a wait on your first invocation.
-
-## 2. Install the wrapper
-
-Copy the wrapper script somewhere on your `PATH` and make it executable:
-
-```bash
-install -Dm755 copilot-container ~/.local/bin/copilot-container
-```
-
-The wrapper looks for `Dockerfile` next to itself by default.
-If you install the script elsewhere from the Dockerfile, point it at the
-Dockerfile explicitly with `DOCKERFILE_PATH` (see below).
-
-## 3. Add the alias
-
-Add this one line to your `~/.bashrc` (or `~/.zshrc`) and restart your shell:
-
-```bash
-alias copilot='~/.local/bin/copilot-container'
-```
+The image installs the official standalone Codex CLI, `gh`, `uv`, and `ruff`.
 
 ## Usage
 
 ```bash
-copilot                       # start an interactive Copilot session in $PWD
-copilot -p "fix the failing test"  # one-shot prompt
-copilot --resume              # resume from the persistent global-resume dir
-copilot --profile pony        # start with the Ponytail plugin profile
-copilot --profile pr create "focus on the API changes"
-copilot --profile pr --resume=<session-id>  # resume a PR-profile session
-copilot --profile pr describe "https://github.com/OWNER/REPO/pull/123"
-copilot --profile pr review "https://github.com/OWNER/REPO/pull/123"
-COPILOT_PROFILE=pony copilot  # select a profile with an environment variable
-copilot bash                  # drop into a shell inside the container
-copilot update                # rebuild the image with --no-cache (keeps a backup tag)
-CONTAINER_ENGINE=docker copilot  # explicitly use Docker instead of Podman
+codex                              # interactive session in $PWD
+codex "explain this repository"     # interactive session with an initial prompt
+codex exec "fix the failing test"   # non-interactive task
+codex resume                       # select a saved session in this profile
+codex resume --all                  # include sessions from other working directories
+codex resume --last                 # resume the most recent session
+codex --profile pony               # start with the Ponytail plugin
+codex --profile pr create "focus on the API changes"
+codex --profile pr describe "https://github.com/OWNER/REPO/pull/123"
+codex --profile pr review "https://github.com/OWNER/REPO/pull/123"
+codex --profile pr resume <session-id>
+codex --profile pr --model <model-id> create "focus on the API changes"
+CODEX_PROFILE=pony codex            # select a profile through the environment
+codex login --device-auth           # log in for all profiles
+codex login status                 # check the shared account
+codex logout                       # sign out the shared account
+codex bash                         # debug inside the container
+codex update                       # rebuild without cache, keeping a backup image tag
+CONTAINER_ENGINE=docker codex       # explicitly select Docker
 ```
+
+Use native Codex arguments: `exec` replaces Copilot's one-shot `-p`, and
+`resume` replaces `--resume`. Standard arguments are forwarded without
+translation. `--profile` is reserved for the wrapper's directory-based profiles.
+No model is hard-coded; use profile configuration or `--model` / `-m`.
+
+The wrapper retains the existing interactive container terminal (`-it`),
+including for `exec`; it is not a headless CI launcher.
 
 ## Authentication
 
-The wrapper resolves a GitHub token in this order:
+**Codex:** log in from inside the container. All profiles share
+`HOST_CODEX_HOME/auth/auth.json`; sessions, plugins, and configuration remain
+separate. `codex login` and `codex logout` operate on this shared account,
+regardless of the selected profile. No host `~/.codex` directory is mounted
+or imported, and no OpenAI API key is automatically forwarded.
 
-1. `COPILOT_GITHUB_TOKEN`
+Use the wrapper's `login` / `logout` commands to manage the shared account,
+rather than changing accounts within a running session. Credentials use
+Codex's file storage, not a host keyring. Treat the shared `auth.json` like a
+password and never commit it.
+
+**GitHub:** the wrapper separately resolves a token for `gh` in this order:
+
+1. `CODEX_GITHUB_TOKEN`
 2. `GH_TOKEN`
-3. `gh auth token` (i.e. your local `gh` login)
+3. The host's `gh auth token`
 
-So if you already use the `gh` CLI, no extra setup is needed.
+GitHub credentials are optional for Codex itself, but required for the PR
+workflows. They are not used to authenticate Codex.
+
+The host Git name, email, and read-only `~/.gitconfig` are forwarded unchanged,
+so commits are authored as you, without tool-specific co-author trailers.
 
 ## Configuration
 
 All optional, set as environment variables:
 
-| Variable             | Default                          | Purpose                                            |
-| -------------------- | -------------------------------- | -------------------------------------------------- |
-| `CONTAINER_ENGINE`   | Auto-detect, preferring `podman` | Select `podman` or `docker`. An explicit choice never falls back. |
-| `IMAGE_NAME`         | `copilot-container`              | Image tag to build/run.                            |
-| `DOCKERFILE_PATH`    | `Dockerfile` next to the wrapper | Where to find the Dockerfile.                      |
-| `HOST_COPILOT_HOME`  | `${XDG_DATA_HOME:-~/.local/share}/copilot-cli` | Host dir for persistent Copilot state. |
-| `COPILOT_PROFILE`    | `default`                        | Profile to use, overridden by `--profile`.         |
-| `COPILOT_NTFY_TOPIC` | *(empty / disabled)*             | [ntfy.sh](https://ntfy.sh) topic for notifications.|
-| `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` | *(from `gh`)*     | GitHub token override.                             |
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `CONTAINER_ENGINE` | Auto-detect, preferring `podman` | Select `podman` or `docker`; an explicit choice never falls back. |
+| `IMAGE_NAME` | `codex-container` | Image tag to build/run. |
+| `DOCKERFILE_PATH` | `Dockerfile` next to the wrapper | Dockerfile location. |
+| `HOST_CODEX_HOME` | `${XDG_DATA_HOME:-~/.local/share}/codex-cli` | Host directory for profile state and shared Codex login. |
+| `CODEX_PROFILE` | `default` | Profile, overridden by `--profile`. |
+| `CODEX_NTFY_TOPIC` | Empty / disabled | ntfy.sh topic for notifications. |
+| `CODEX_GITHUB_TOKEN` / `GH_TOKEN` | From host `gh`, if available | GitHub token for `gh`, not Codex authentication. |
 
-### Notifications (optional)
-
-Set `COPILOT_NTFY_TOPIC` to an [ntfy.sh](https://ntfy.sh) topic to get a push
-notification when Copilot is waiting for your input or has finished:
-
-```bash
-export COPILOT_NTFY_TOPIC="my-unique-topic-name"
-```
-
-Subscribe to the same topic in the ntfy app or at `https://ntfy.sh/my-unique-topic-name`.
-Leave it unset to disable notifications entirely.
+This is a replacement, not a dual-CLI wrapper. Old `COPILOT_*` variables and
+Copilot state are not migrated; the Codex image and state use new names.
 
 ## Profiles and persistent state
 
-Profiles become available by adding a directory beneath `profiles/` next to the
-wrapper. The default profile provides these assets, and named profiles may
-override any subset:
+Add a directory under `profiles/` next to the wrapper:
 
 ```text
 profiles/<profile>/
 ├── command.sh
 ├── init.sh
 ├── hooks.json
-├── copilot-instructions.md
-├── prompts/
-│   └── example.md
-└── settings.json
+├── AGENTS.md
+├── config.toml
+└── prompts/
+    └── example.md
 ```
 
-The selected profile's sessions, plugins, hooks, and settings are stored on the
-host at `HOST_COPILOT_HOME/profiles/<profile>/` and mounted into the container
-at `/copilot-state`. The container copies `hooks.json` to `hooks/notify.json`
-and `copilot-instructions.md`, and copies the resolved profile `settings.json`
-into the selected state before each launch. Profile instructions are also
-linked into Copilot's `$HOME/.copilot` instruction-discovery path.
-`init.sh` runs inside the container before Copilot starts, so it can install
-profile-specific plugins. A profile may also include `command.sh`; when present,
-it runs inside the container after `init.sh` and receives the Copilot arguments.
-This lets a profile turn command-style arguments into a full Copilot invocation,
-such as selecting a model and passing a generated `-p` prompt.
-Command-style profiles may keep long prompts in versioned Markdown files under
-their own `prompts/` directory. The Markdown files are inert data; any
-placeholder rendering is owned by that profile's `command.sh`.
+Every asset except `command.sh` falls back to the matching file in
+`profiles/default/` when absent. An existing empty file disables that asset;
+an empty hooks file removes previously copied hooks. `{}` also represents a
+hooks file with no hooks. Invalid configuration is reported by Codex rather
+than silently ignored.
 
-Profile files are optional for named profiles: a missing file falls back to the
-same file in `profiles/default/`; an existing empty file explicitly disables
-that profile asset. `command.sh` is optional and has no fallback requirement; a
-profile without it keeps the standard `copilot "$@"` argument forwarding. Hooks
-and instructions are copied on every startup so profile edits take effect
-immediately. The profile repository is authoritative for `settings.json`:
-settings changes made within the CLI are intentionally discarded when the
-session ends, while manual profile-file edits apply to the next instance.
-Copilot's internal `config.json` remains only in the private profile state
-directory, where its authentication and plugin metadata are not stored with the
-wrapper's profile files. A blank private `config.json` is treated as
-uninitialized and recreated at startup. The default
-profile's `settings.json` selects Copilot's `default` theme, which uses the
-terminal's native color palette rather than a Copilot-specific background.
+The selected profile's state is stored at
+`HOST_CODEX_HOME/profiles/<profile>/` and mounted at `/codex-state`, with
+`CODEX_HOME=/codex-state`. The shared authentication directory is mounted
+separately at `/codex-auth`. A profile's `auth.json` links to the shared file
+so token refreshes are shared too.
 
-The `default` profile retains `--resume` support through its
-`global-resume/` directory, allowing its sessions to be resumed from any
-repository or folder. Named profiles do not use this shared resume store: pass
-the same profile used to start the session when resuming it, for example
-`copilot --profile pr --resume=<session-id>` (or `copilot --profile pr --resume`
-to select one). Resume arguments go straight to Copilot, bypassing any
-command-style profile dispatcher.
+At startup, the wrapper copies `hooks.json` and `AGENTS.md` into `CODEX_HOME`
+for native Codex discovery. It copies the resolved profile `config.toml` to
+`CODEX_HOME/container.config.toml` and selects it using Codex's native
+`--profile container`. This keeps repository-owned defaults authoritative
+without overwriting Codex's private `config.toml`, plugin metadata, or hook
+trust decisions. Edit the versioned profile files to change defaults.
+CLI `--config` / `-c` overrides still apply.
+
+`init.sh` runs before a session starts, and may install profile-specific
+plugins. An optional `command.sh` then receives the CLI arguments. The `pr`
+dispatcher handles its workflow commands and passes native Codex commands
+such as `resume`, `exec`, and `fork` through normally. Login/logout and the
+debug shell bypass profile initialization and dispatch. Management commands
+that Codex does not allow to select a native config profile (such as `plugin`
+and `features`) also bypass the config overlay and profile initialization.
+
+Sessions are profile-local. To resume a named profile's session, select that
+same profile, for example `codex --profile pr resume <session-id>`.
+`resume --all` includes sessions across working directories within the
+selected profile; no synthetic global-resume directory is needed.
 
 Built-in profiles:
 
-- `default` — the standard hooks and commit-authorship instructions.
-- `pony` — installs the [Ponytail](https://github.com/DietrichGebert/ponytail)
-  plugin before starting Copilot.
-- `pr` — command-style PR workflows:
-  - `copilot --profile pr create "[extra instruction]"` reads pending git
-    changes, creates logical commits on a branch based on the configured base
-    branch, and opens or updates a draft PR without running tests.
-  - `copilot --profile pr describe "<PR link>" "[extra instruction]"` updates
-    the PR title and description from a broader project standpoint, and rewrites
-    non-standard commit messages when needed.
-  - `copilot --profile pr review "<PR link>" "[extra instruction]"` addresses
-    open review comments and failing CI in a temporary worktree, pushes the
-    commits, replies to comments, and removes the worktree.
-  The prompt prose lives in `profiles/pr/prompts/*.md`; `command.sh` renders
-  `{{PR_LINK}}` and `{{EXTRA_INSTRUCTIONS}}` placeholders before invoking
-  Copilot.
+- `default` - native notification hooks and commit-authorship instructions.
+- `pony` - installs the native
+  [Ponytail Codex plugin](https://github.com/DietrichGebert/ponytail).
+  Its enabled lifecycle hooks run without a manual trust step.
+- `pr` - preserves the existing PR workflows using `codex exec`: `create`
+  commits pending changes and opens/updates a draft PR without running tests;
+  `describe` updates a PR's title/description and non-standard commit messages;
+  `review` addresses review comments and failing CI in a temporary worktree.
+  Prompts remain in `profiles/pr/prompts/*.md`, with `{{PR_LINK}}` and
+  `{{EXTRA_INSTRUCTIONS}}` rendered by `command.sh`. Model and `-c` options
+  go before the workflow name.
 
-Delete a profile's state directory to reset that profile without affecting the
-others.
+Delete only a profile's state directory to reset it without affecting the
+others or the shared login.
 
-## Permissions and Docker setup
+## Notifications
 
-The image is shared between users; no user-specific rebuild is needed. The
-wrapper selects the runtime identity for each engine:
+```bash
+export CODEX_NTFY_TOPIC="my-unique-topic-name"
+```
 
-| Engine mode | Identity and bind-mount behavior |
-| ----------- | -------------------------------- |
-| Podman | Uses `--userns=keep-id`, your UID/GID, and `--group-add keep-groups` to retain host supplementary groups (requires a compatible runtime such as `crun`). |
-| Regular Docker | Uses your numeric UID/GID and supplementary group IDs, so newly created files belong to you, not root. Uses `--userns=host` to opt this container out of daemon-wide `userns-remap`; otherwise bind mounts would use subordinate IDs. |
-| Rootless Docker | Uses container UID/GID `0:0`, which maps to the unprivileged user running the daemon, **not host root**. The daemon must run as your user. Passing your host UID to a rootless container would select the wrong host identity. |
+Subscribe in the ntfy app or at `https://ntfy.sh/my-unique-topic-name`.
+Leave the variable unset to disable sending.
 
-Before starting Copilot, the wrapper creates temporary files through the
-workspace and state mounts and checks file ownership from the host. It also
-checks the hooks and default-profile resume directories. Failed probes stop
-the launch with the original engine error; temporary probes are cleaned up.
-The wrapper does not recursively `chown` your files, make them world-writable,
-mount the Docker socket, or request privileged mode. SELinux container labeling
-is disabled for these bind mounts; host files are not relabeled with `:Z`.
+The default profile uses native Codex `Stop`, `PreToolUse` for
+`request_user_input`, and `PermissionRequest` hooks for done/waiting messages.
+Hooks run asynchronously, and no Copilot event or transcript parsing is
+emulated. Approval notifications normally do not fire because the wrapper
+bypasses approvals. Only events exposed by Codex are covered.
 
-If Docker reports a socket permission error, configure access for your normal
-user using [rootless Docker](https://docs.docker.com/engine/security/rootless/)
-or your administrator's Docker setup. Membership in the `docker` group grants
-root-equivalent access to a regular Docker daemon and may require a new login
-to take effect. **Do not fix this by running the wrapper with `sudo` or making
-the Docker socket world-writable**: `sudo` changes the Git identity, state
-location, and ownership of generated files.
+The wrapper passes `--dangerously-bypass-hook-trust` on every session launch,
+so enabled user, project, and plugin hooks run without manual trust, including
+new or changed definitions. Hooks disabled in Codex remain disabled.
+The launch directory, any `--cd` / `-C` target, and their parent directories
+are marked trusted through CLI configuration defaults. This also loads their
+project configuration and hooks without folder trust prompts. These defaults
+apply to all profiles, including PR workflows, and leave persisted private
+configuration intact. Explicit CLI `-c` overrides still take precedence.
 
-If `/workspace` or `/copilot-state` is not writable, check the reported host
-path's ownership, permissions, and any read-only filesystem restrictions.
-Existing root-owned files from earlier runs may need a targeted ownership
-repair by their owner or administrator. Rootless Docker cannot retain the
-caller's host supplementary groups: for group-only access to shared checkouts,
-use Podman with `keep-groups`, regular Docker, or arrange direct access for your
-user with the directory owner.
+## Permissions and engine setup
 
-`--allow-all` is intentional, but the container is not a complete security
-boundary: it has writable host bind mounts, your GitHub token, and host
-networking (inside the daemon's network namespace for rootless Docker).
+The image is shared between users; no user-specific rebuild is needed.
+
+| Engine mode | Runtime identity |
+| ----------- | ---------------- |
+| Podman | `--userns=keep-id`, your UID/GID, and `--group-add keep-groups` (requires a compatible runtime such as `crun`). |
+| Regular Docker | Your numeric UID/GID and supplementary groups; `--userns=host` opts out of daemon-wide `userns-remap` for correct bind-mount ownership. |
+| Rootless Docker | Container UID/GID `0:0`, mapped to the unprivileged daemon user, not host root. The daemon must run as your user. |
+
+Before launching, the wrapper probes writability and host ownership through
+the workspace, selected profile state, sessions, and shared-auth mounts.
+Failures preserve the engine error, stop startup, and clean temporary probes.
+It does not recursively chown files, make them world-writable, mount the
+Docker socket, or request privileged mode. SELinux labeling is disabled for
+these mounts; host files are not relabeled with `:Z`.
+
+For Docker socket errors, configure rootless Docker or administrator-provided
+access. **Do not use sudo or make the socket world-writable**: sudo changes
+Git identity, state location, and ownership. Docker-group membership grants
+root-equivalent access to a regular daemon.
+
+If `/workspace`, `/codex-state`, or `/codex-auth` is not writable, check the
+reported host path's ownership and permissions. Rootless Docker cannot retain
+host supplementary groups; for group-only access, use Podman with
+`keep-groups`, regular Docker, or arrange direct user access.
+
+Bypassing Codex approvals and its inner sandbox is intentional. The outer
+container still has writable host mounts, credentials, and host networking
+(inside the daemon's network namespace for rootless Docker).
 
 ## Launcher regression tests
 
@@ -261,6 +264,7 @@ networking (inside the daemon's network namespace for rootless Docker).
 python3 -B -m unittest discover -s tests -v
 ```
 
-These use mock engines and run the actual write-probe shell commands against
-temporary directories without requiring Docker or Podman. When Linux user
-namespaces are available, they also exercise rootless UID mapping.
+Tests use mock engines and real write probes against temporary directories,
+without Docker or Podman. They also cover profile dispatch and shared
+authentication setup. Rootless UID mapping is checked when Linux user
+namespaces are available.
