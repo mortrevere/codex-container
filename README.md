@@ -75,6 +75,7 @@ codex resume                       # select a saved session in this profile
 codex resume --all                  # include sessions from other working directories
 codex resume --last                 # resume the most recent session
 codex --profile pony               # start with the Ponytail plugin
+codex --profile mcp                # start with Kubernetes and Grafana MCP servers
 codex --profile pr create "focus on the API changes"
 codex --profile pr describe "https://github.com/OWNER/REPO/pull/123"
 codex --profile pr review "https://github.com/OWNER/REPO/pull/123"
@@ -200,6 +201,10 @@ selected profile.
 Built-in profiles:
 
 - `default` - native notification hooks and commit-authorship instructions.
+- `mcp` - enables Kubernetes at `http://localhost:8080/mcp` and Grafana at
+  `http://localhost:18000/mcp` by default. Inherits the default hooks and
+  commit-authorship instructions. Start both MCP servers before launching
+  `codex --profile mcp`; the profile connects to them without starting them.
 - `pony` - installs the native
   [Ponytail Codex plugin](https://github.com/DietrichGebert/ponytail).
   Its enabled lifecycle hooks run without a manual trust step.
