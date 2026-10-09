@@ -2,6 +2,8 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/usr/local/bin:/usr/bin:/bin"
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -9,6 +11,8 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        kitty-terminfo \
+        ncurses-term \
         python3 \
         python3-pip \
     && rm -rf /var/lib/apt/lists/*

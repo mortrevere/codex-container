@@ -297,6 +297,22 @@ fi
 # Let the engine inherit the resolved token without exposing it in argv.
 export GH_TOKEN="${GITHUB_TOKEN}"
 
+# A container TTY still renders in the host terminal. Preserve its capabilities
+# so Codex can detect truecolor, terminal-specific behavior, and color overrides.
+TERMINAL_ENV_ARGS=(-e "TERM=${TERM:-xterm-256color}")
+for terminal_variable in \
+  COLORTERM TERM_PROGRAM TERM_PROGRAM_VERSION COLORFGBG \
+  NO_COLOR FORCE_COLOR CLICOLOR CLICOLOR_FORCE \
+  VTE_VERSION KONSOLE_VERSION GNOME_TERMINAL_SCREEN \
+  KITTY_WINDOW_ID WEZTERM_VERSION WT_SESSION \
+  ITERM_SESSION_ID TERM_SESSION_ID \
+  TMUX TMUX_PANE ZELLIJ ZELLIJ_SESSION_NAME ZELLIJ_VERSION; do
+  if [[ -v "${terminal_variable}" ]]; then
+    export "${terminal_variable}"
+    TERMINAL_ENV_ARGS+=(-e "${terminal_variable}")
+  fi
+done
+
 set -- bash /codex-container-init "$@"
 
 RUN_ARGS=(
@@ -307,6 +323,7 @@ RUN_ARGS=(
   -e CODEX_HOME=/codex-state
   -e CODEX_AUTH_HOME=/codex-auth
   -e GH_TOKEN
+  "${TERMINAL_ENV_ARGS[@]}"
   -e CODEX_NTFY_TOPIC="${CODEX_NTFY_TOPIC:-}"
   -e CODEX_PROFILE_INIT="/codex-profiles/${PROFILE_INIT#"${SCRIPT_DIR}/profiles/"}"
   -e CODEX_PROFILE_HOOKS="/codex-profiles/${PROFILE_HOOKS_REL}"

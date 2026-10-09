@@ -13,8 +13,13 @@ with open(os.environ["ENGINE_LOG"], "a") as log:
     log.write(json.dumps([Path(sys.argv[0]).name, *args]) + "\n")
 
 if args[0] == "run" and "-it" in args and os.environ.get("ENGINE_ENV_LOG"):
+    environment = {}
+    for index, arg in enumerate(args):
+        if arg == "-e":
+            name, separator, value = args[index + 1].partition("=")
+            environment[name] = value if separator else os.environ.get(name)
     Path(os.environ["ENGINE_ENV_LOG"]).write_text(
-        json.dumps({"GH_TOKEN": os.environ.get("GH_TOKEN")})
+        json.dumps(environment)
     )
 
 if args[0] == "info":

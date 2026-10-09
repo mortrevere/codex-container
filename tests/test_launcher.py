@@ -385,6 +385,47 @@ esac
         self.assertIn("not logged in", result.stderr)
         self.assertEqual(json.loads(self.environment_log.read_text())["GH_TOKEN"], "")
 
+    def test_host_terminal_capabilities_reach_both_engines(self):
+        terminal = {
+            "TERM": "xterm-kitty",
+            "COLORTERM": "truecolor",
+            "TERM_PROGRAM": "kitty",
+            "TERM_PROGRAM_VERSION": "0.43.0",
+            "KITTY_WINDOW_ID": "42",
+            "COLORFGBG": "15;0",
+            "TMUX": "/tmp/tmux-12001/default,123,0",
+            "TMUX_PANE": "%1",
+        }
+        for engine in ("docker", "podman"):
+            with self.subTest(engine=engine):
+                self.engine(engine)
+                self.assert_success(self.launch(CONTAINER_ENGINE=engine, **terminal))
+                run = self.runs()[-1]
+                passed = self.values(run, "-e")
+                captured = json.loads(self.environment_log.read_text())
+                self.assertIn("-it", run)
+                self.assertIn("TERM=xterm-kitty", passed)
+                for name, value in terminal.items():
+                    self.assertEqual(captured[name], value)
+                    if name != "TERM":
+                        self.assertIn(name, passed)
+                self.assertNotIn("NO_COLOR", passed)
+                self.assertNotIn("FORCE_COLOR", passed)
+                self.assertNotIn("COLUMNS", passed)
+                self.assertNotIn("LINES", passed)
+
+    def test_terminal_color_preferences_are_preserved(self):
+        self.engine("docker")
+        for preferences in ({"NO_COLOR": "1"}, {"FORCE_COLOR": "3"},
+                            {"TERM": "dumb", "COLORTERM": ""}):
+            with self.subTest(preferences=preferences):
+                self.assert_success(self.launch(**preferences))
+                captured = json.loads(self.environment_log.read_text())
+                passed = self.values(self.runs()[-1], "-e")
+                for name, value in preferences.items():
+                    self.assertEqual(captured[name], value)
+                    self.assertIn(f"TERM={value}" if name == "TERM" else name, passed)
+
     def test_profile_environment_and_validation(self):
         self.engine("docker")
         self.assert_success(self.launch(CODEX_PROFILE="pr"))

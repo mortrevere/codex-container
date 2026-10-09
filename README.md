@@ -96,6 +96,15 @@ No model is hard-coded; use profile configuration or `--model` / `-m`.
 The wrapper retains the existing interactive container terminal (`-it`),
 including for `exec`; it is not a headless CI launcher.
 
+The launcher preserves the host's `TERM`, `COLORTERM`, terminal identity,
+multiplexer metadata, and explicit color preferences such as `NO_COLOR` and
+`FORCE_COLOR`. This lets Codex use the same color capabilities as a native
+launch. The image uses UTF-8 and includes Kitty's `xterm-kitty` definition
+alongside additional terminal definitions.
+Terminal dimensions and resize events come from the allocated TTY.
+After updating from an older image, run `codex update` once to add the image
+changes. Host fonts still control how glyphs look.
+
 ## Authentication
 
 **Codex:** log in from inside the container. All profiles share
