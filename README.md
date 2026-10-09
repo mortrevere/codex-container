@@ -214,9 +214,9 @@ Built-in profiles:
   `review` addresses review comments and failing CI in a temporary worktree.
   Prompts remain in `profiles/pr/prompts/*.md`, with `{{PR_LINK}}` and
   `{{EXTRA_INSTRUCTIONS}}` rendered by `command.sh`. Model and `-c` options
-  go before the workflow name. `create` and `describe` (also `description`)
-  default to GPT-6-Luna with high reasoning; `review` defaults to GPT-6.1-Sol
-  with low reasoning.
+  go before the workflow name. `create` defaults to GPT-6-Luna with high
+  reasoning; `describe` (also `description`) and `review` default to
+  GPT-6.1-Sol with low reasoning.
   CLI model and reasoning overrides take precedence.
 
 Delete only a profile's state directory to reset it without affecting the

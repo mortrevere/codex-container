@@ -75,7 +75,7 @@ case "$1" in
     pr_link="$1"
     shift
     prompt="$(render_prompt "$SCRIPT_DIR/prompts/describe.md" "$pr_link" "$@")"
-    exec codex exec -c 'model="gpt-6-luna"' -c 'model_reasoning_effort="high"' "${codex_args[@]}" "$prompt"
+    exec codex exec -c 'model="gpt-6.1-sol"' -c 'model_reasoning_effort="low"' "${codex_args[@]}" "$prompt"
     ;;
   review)
     shift
