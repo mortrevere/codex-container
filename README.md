@@ -185,6 +185,10 @@ without overwriting Codex's private `config.toml`, plugin metadata, or hook
 trust decisions. Edit the versioned profile files to change defaults.
 CLI `--config` / `-c` overrides still apply.
 
+The default status line shows the model and reasoning level, weekly limit,
+remaining context, and current Git branch. It omits the container working
+directory. This also applies to profiles that inherit the default configuration.
+
 `init.sh` runs before a session starts, and may install profile-specific
 plugins. An optional `command.sh` then receives the CLI arguments. The `pr`
 dispatcher handles its workflow commands and passes native Codex commands

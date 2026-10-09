@@ -1,2 +1,5 @@
 cli_auth_credentials_store = "file"
 check_for_update_on_startup = false
+
+[tui]
+status_line = ["model-with-reasoning", "weekly-limit", "context-remaining", "git-branch"]
