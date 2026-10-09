@@ -89,22 +89,20 @@ codex update                       # rebuild without cache, keeping a backup ima
 CONTAINER_ENGINE=docker codex       # explicitly select Docker
 ```
 
-Use native Codex arguments: `exec` replaces Copilot's one-shot `-p`, and
-`resume` replaces `--resume`. Standard arguments are forwarded without
+Use native Codex arguments. Standard arguments are forwarded without
 translation. `--profile` is reserved for the wrapper's directory-based profiles.
-No model is hard-coded; use profile configuration or `--model` / `-m`.
+Use profile configuration or `--model` / `-m` to select a model.
 
-The wrapper retains the existing interactive container terminal (`-it`),
-including for `exec`; it is not a headless CI launcher.
+The wrapper allocates an interactive container terminal (`-it`), including
+for `exec`.
 
 The launcher preserves the host's `TERM`, `COLORTERM`, terminal identity,
 multiplexer metadata, and explicit color preferences such as `NO_COLOR` and
 `FORCE_COLOR`. This lets Codex use the same color capabilities as a native
 launch. The image uses UTF-8 and includes Kitty's `xterm-kitty` definition
 alongside additional terminal definitions.
-Terminal dimensions and resize events come from the allocated TTY.
-After updating from an older image, run `codex update` once to add the image
-changes. Host fonts still control how glyphs look.
+Terminal dimensions and resize events come from the allocated TTY. Host fonts
+control how glyphs look.
 
 ## Authentication
 
@@ -147,9 +145,6 @@ All optional, set as environment variables:
 | `CODEX_NTFY_TOPIC` | Empty / disabled | ntfy.sh topic for notifications. |
 | `CODEX_GITHUB_TOKEN` / `GH_TOKEN` | From host `gh`, if available | GitHub token for `gh`, not Codex authentication. |
 
-This is a replacement, not a dual-CLI wrapper. Old `COPILOT_*` variables and
-Copilot state are not migrated; the Codex image and state use new names.
-
 ## Profiles and persistent state
 
 Add a directory under `profiles/` next to the wrapper:
@@ -166,10 +161,10 @@ profiles/<profile>/
 ```
 
 Every asset except `command.sh` falls back to the matching file in
-`profiles/default/` when absent. An existing empty file disables that asset;
-an empty hooks file removes previously copied hooks. `{}` also represents a
-hooks file with no hooks. Invalid configuration is reported by Codex rather
-than silently ignored.
+`profiles/default/` when absent. An empty file disables that asset; an empty
+hooks file removes hooks copied at startup. `{}` also represents a hooks file
+with no hooks. Invalid configuration is reported by Codex rather than silently
+ignored.
 
 The selected profile's state is stored at
 `HOST_CODEX_HOME/profiles/<profile>/` and mounted at `/codex-state`, with
@@ -200,7 +195,7 @@ and `features`) also bypass the config overlay and profile initialization.
 Sessions are profile-local. To resume a named profile's session, select that
 same profile, for example `codex --profile pr resume <session-id>`.
 `resume --all` includes sessions across working directories within the
-selected profile; no synthetic global-resume directory is needed.
+selected profile.
 
 Built-in profiles:
 
@@ -208,15 +203,15 @@ Built-in profiles:
 - `pony` - installs the native
   [Ponytail Codex plugin](https://github.com/DietrichGebert/ponytail).
   Its enabled lifecycle hooks run without a manual trust step.
-  If an older image reports hook exit code 127, run `codex update` to rebuild
-  it with the Node.js runtime required by Ponytail's hooks.
-- `pr` - preserves the existing PR workflows using `codex exec`: `create`
+- `pr` - provides PR workflows using `codex exec`: `create`
   commits pending changes and opens/updates a draft PR without running tests;
   `describe` updates a PR's title/description and non-standard commit messages;
   `review` addresses review comments and failing CI in a temporary worktree.
   Prompts remain in `profiles/pr/prompts/*.md`, with `{{PR_LINK}}` and
   `{{EXTRA_INSTRUCTIONS}}` rendered by `command.sh`. Model and `-c` options
-  go before the workflow name.
+  go before the workflow name. `create` and `describe` (also `description`)
+  default to GPT-6-Luna with high reasoning; CLI model and reasoning overrides
+  take precedence.
 
 Delete only a profile's state directory to reset it without affecting the
 others or the shared login.
@@ -232,9 +227,8 @@ Leave the variable unset to disable sending.
 
 The default profile uses native Codex `Stop`, `PreToolUse` for
 `request_user_input`, and `PermissionRequest` hooks for done/waiting messages.
-Hooks run asynchronously, and no Copilot event or transcript parsing is
-emulated. Approval notifications normally do not fire because the wrapper
-bypasses approvals. Only events exposed by Codex are covered.
+Hooks run asynchronously. Approval notifications normally do not fire because
+the wrapper bypasses approvals. Only events exposed by Codex are covered.
 
 The wrapper passes `--dangerously-bypass-hook-trust` on every session launch,
 so enabled user, project, and plugin hooks run without manual trust, including
