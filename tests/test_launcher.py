@@ -303,6 +303,7 @@ esac
         commands = [
             ("create", ("create", "focus on API"), "Read the pending git changes", "focus on API"),
             ("describe", ("describe", "https://github.com/o/r/pull/1", "mention migrations"), "Read the PR at https://github.com/o/r/pull/1", "mention migrations"),
+            ("description", ("description", "https://github.com/o/r/pull/1", "mention migrations"), "Read the PR at https://github.com/o/r/pull/1", "mention migrations"),
             ("review", ("review", "https://github.com/o/r/pull/2", "prioritize CI"), "See the review comments on https://github.com/o/r/pull/2", "prioritize CI"),
         ]
 
@@ -324,8 +325,11 @@ with open(os.environ["CODEX_ARGS_FILE"], "w") as file:
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 codex_args = json.loads(args_file.read_text())
+                defaults = [] if name == "review" else [
+                    "-c", 'model="gpt-6-luna"', "-c", 'model_reasoning_effort="high"',
+                ]
                 self.assertEqual(codex_args[:-1], [
-                    "exec", "--profile", "container",
+                    "exec", *defaults, "--profile", "container",
                     "--dangerously-bypass-approvals-and-sandbox",
                     "--dangerously-bypass-hook-trust",
                     "-c", 'cli_auth_credentials_store="file"',
