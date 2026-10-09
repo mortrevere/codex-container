@@ -62,7 +62,8 @@ podman build . -f Dockerfile -t codex-container
 docker build . -f Dockerfile -t codex-container
 ```
 
-The image installs the official standalone Codex CLI, `gh`, `uv`, and `ruff`.
+The image installs the official standalone Codex CLI, `gh`, `uv`, and `ruff`,
+plus Node.js for plugin hooks such as Ponytail's.
 
 ## Usage
 
@@ -203,6 +204,8 @@ Built-in profiles:
 - `pony` - installs the native
   [Ponytail Codex plugin](https://github.com/DietrichGebert/ponytail).
   Its enabled lifecycle hooks run without a manual trust step.
+  If an older image reports hook exit code 127, run `codex update` to rebuild
+  it with the Node.js runtime required by Ponytail's hooks.
 - `pr` - preserves the existing PR workflows using `codex exec`: `create`
   commits pending changes and opens/updates a draft PR without running tests;
   `describe` updates a PR's title/description and non-standard commit messages;

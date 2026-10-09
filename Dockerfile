@@ -13,6 +13,7 @@ RUN apt-get update \
         git \
         kitty-terminfo \
         ncurses-term \
+        nodejs \
         python3 \
         python3-pip \
     && rm -rf /var/lib/apt/lists/*
