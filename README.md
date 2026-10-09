@@ -117,6 +117,8 @@ password and never commit it.
 
 GitHub credentials are optional for Codex itself, but required for the PR
 workflows. They are not used to authenticate Codex.
+The resolved token is passed through the engine's environment using
+`-e GH_TOKEN`, keeping its value out of command-line arguments.
 
 The host Git name, email, and read-only `~/.gitconfig` are forwarded unchanged,
 so commits are authored as you, without tool-specific co-author trailers.

@@ -294,6 +294,9 @@ elif command -v gh >/dev/null 2>&1; then
   fi
 fi
 
+# Let the engine inherit the resolved token without exposing it in argv.
+export GH_TOKEN="${GITHUB_TOKEN}"
+
 set -- bash /codex-container-init "$@"
 
 RUN_ARGS=(
@@ -303,7 +306,7 @@ RUN_ARGS=(
   -e HOME=/tmp/home
   -e CODEX_HOME=/codex-state
   -e CODEX_AUTH_HOME=/codex-auth
-  -e GH_TOKEN="${GITHUB_TOKEN}"
+  -e GH_TOKEN
   -e CODEX_NTFY_TOPIC="${CODEX_NTFY_TOPIC:-}"
   -e CODEX_PROFILE_INIT="/codex-profiles/${PROFILE_INIT#"${SCRIPT_DIR}/profiles/"}"
   -e CODEX_PROFILE_HOOKS="/codex-profiles/${PROFILE_HOOKS_REL}"

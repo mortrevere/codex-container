@@ -25,6 +25,7 @@ class LauncherTests(unittest.TestCase):
         self.workspace.mkdir()
         self.state = self.root / "state with spaces"
         self.log = self.root / "engine.jsonl"
+        self.environment_log = self.root / "engine-env.json"
         for tool in ("bash", "dirname", "mkdir", "chmod", "mktemp", "rm", "rmdir", "date", "python3", "cp", "ln", "cat"):
             self.bin.joinpath(tool).symlink_to(shutil.which(tool))
         self.script("id", """#!/usr/bin/env bash
@@ -42,6 +43,7 @@ esac
             "HOST_CODEX_HOME": str(self.state),
             "CODEX_GITHUB_TOKEN": "test-token",
             "ENGINE_LOG": str(self.log),
+            "ENGINE_ENV_LOG": str(self.environment_log),
         }
 
     def script(self, name, content):
@@ -358,23 +360,30 @@ esac
         self.engine("docker")
         self.assert_success(self.launch(CODEX_GITHUB_TOKEN=""))
         run = self.runs()[-1]
-        self.assertIn("GH_TOKEN=", run)
+        self.assertIn("GH_TOKEN", run)
+        self.assertEqual(json.loads(self.environment_log.read_text())["GH_TOKEN"], "")
         self.assertFalse(any(arg.startswith("OPENAI_API_KEY=") for arg in run))
         self.assert_success(self.launch(CODEX_GITHUB_TOKEN="", GH_TOKEN="gh-token"))
-        self.assertIn("GH_TOKEN=gh-token", self.runs()[-1])
+        self.assertEqual(json.loads(self.environment_log.read_text())["GH_TOKEN"], "gh-token")
         self.assert_success(self.launch(GH_TOKEN="gh-token"))
-        self.assertIn("GH_TOKEN=test-token", self.runs()[-1])
+        self.assertEqual(json.loads(self.environment_log.read_text())["GH_TOKEN"], "test-token")
+        for run in self.runs():
+            self.assertFalse(any(arg.startswith("GH_TOKEN=") for arg in run))
+            self.assertFalse(any(token in arg for token in ("test-token", "gh-token") for arg in run))
 
     def test_host_gh_token_resolution_and_failure_warning(self):
         self.engine("docker")
         self.script("gh", "#!/usr/bin/env bash\nprintf 'host-token\\n'\n")
         self.assert_success(self.launch(CODEX_GITHUB_TOKEN=""))
-        self.assertIn("GH_TOKEN=host-token", self.runs()[-1])
+        self.assertIn("GH_TOKEN", self.runs()[-1])
+        self.assertEqual(json.loads(self.environment_log.read_text())["GH_TOKEN"], "host-token")
+        self.assertFalse(any("host-token" in arg for run in self.runs() for arg in run))
         self.script("gh", "#!/usr/bin/env bash\necho 'not logged in' >&2\nexit 1\n")
         result = self.launch(CODEX_GITHUB_TOKEN="")
         self.assert_success(result)
         self.assertIn("warning: no GitHub token available", result.stderr)
         self.assertIn("not logged in", result.stderr)
+        self.assertEqual(json.loads(self.environment_log.read_text())["GH_TOKEN"], "")
 
     def test_profile_environment_and_validation(self):
         self.engine("docker")

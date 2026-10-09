@@ -12,6 +12,11 @@ args = sys.argv[1:]
 with open(os.environ["ENGINE_LOG"], "a") as log:
     log.write(json.dumps([Path(sys.argv[0]).name, *args]) + "\n")
 
+if args[0] == "run" and "-it" in args and os.environ.get("ENGINE_ENV_LOG"):
+    Path(os.environ["ENGINE_ENV_LOG"]).write_text(
+        json.dumps({"GH_TOKEN": os.environ.get("GH_TOKEN")})
+    )
+
 if args[0] == "info":
     if os.environ.get("FAIL_INFO"):
         print("permission denied connecting to Docker socket", file=sys.stderr)
