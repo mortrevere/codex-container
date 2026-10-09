@@ -32,7 +32,8 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
-RUN /usr/local/bin/uv tool install ruff
+RUN UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin /usr/local/bin/uv tool install ruff \
+    && ruff --version
 
 RUN curl -fsSL https://chatgpt.com/codex/install.sh \
     | env CODEX_INSTALL_DIR=/usr/local/bin CODEX_HOME=/opt/codex CODEX_NON_INTERACTIVE=1 sh \
