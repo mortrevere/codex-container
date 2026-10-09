@@ -92,7 +92,7 @@ CONTAINER_ENGINE=docker codex       # explicitly select Docker
 Use native Codex arguments: `exec` replaces Copilot's one-shot `-p`, and
 `resume` replaces `--resume`. Standard arguments are forwarded without
 translation. `--profile` is reserved for the wrapper's directory-based profiles.
-No model is hard-coded; use profile configuration or `--model` / `-m`.
+Use profile configuration or `--model` / `-m` to select a model.
 
 The wrapper retains the existing interactive container terminal (`-it`),
 including for `exec`; it is not a headless CI launcher.
@@ -216,7 +216,9 @@ Built-in profiles:
   `review` addresses review comments and failing CI in a temporary worktree.
   Prompts remain in `profiles/pr/prompts/*.md`, with `{{PR_LINK}}` and
   `{{EXTRA_INSTRUCTIONS}}` rendered by `command.sh`. Model and `-c` options
-  go before the workflow name.
+  go before the workflow name. `create` and `describe` (also `description`)
+  default to GPT-6-Luna with high reasoning; CLI model and reasoning overrides
+  take precedence.
 
 Delete only a profile's state directory to reset it without affecting the
 others or the shared login.
