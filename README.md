@@ -215,8 +215,9 @@ Built-in profiles:
   Prompts remain in `profiles/pr/prompts/*.md`, with `{{PR_LINK}}` and
   `{{EXTRA_INSTRUCTIONS}}` rendered by `command.sh`. Model and `-c` options
   go before the workflow name. `create` and `describe` (also `description`)
-  default to GPT-6-Luna with high reasoning; CLI model and reasoning overrides
-  take precedence.
+  default to GPT-6-Luna with high reasoning; `review` defaults to GPT-6.1-Sol
+  with low reasoning.
+  CLI model and reasoning overrides take precedence.
 
 Delete only a profile's state directory to reset it without affecting the
 others or the shared login.

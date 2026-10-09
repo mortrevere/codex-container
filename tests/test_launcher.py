@@ -325,7 +325,9 @@ with open(os.environ["CODEX_ARGS_FILE"], "w") as file:
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 codex_args = json.loads(args_file.read_text())
-                defaults = [] if name == "review" else [
+                defaults = [
+                    "-c", 'model="gpt-6.1-sol"', "-c", 'model_reasoning_effort="low"',
+                ] if name == "review" else [
                     "-c", 'model="gpt-6-luna"', "-c", 'model_reasoning_effort="high"',
                 ]
                 self.assertEqual(codex_args[:-1], [
