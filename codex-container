@@ -344,4 +344,33 @@ RUN_ARGS+=(
   -v "${SHARED_AUTH_HOME}:/codex-auth"
 )
 
-exec "${ENGINE}" run "${RUN_ARGS[@]}" "${IMAGE_NAME}" "$@"
+# The browser runs on the host, retaining its desktop environment and login.
+# A private bind-mounted Unix socket also works with rootless engine networks.
+if [ "${CODEX_HOST_BROWSER:-1}" != 0 ] && command -v python3 >/dev/null 2>&1; then
+  BROWSER_RELAY_DIR="$(mktemp -d /tmp/codex-browser.XXXXXXXXXX)"
+  BROWSER_RELAY_PID=""
+  cleanup_browser_relay() {
+    if [ -n "${BROWSER_RELAY_PID}" ]; then
+      kill "${BROWSER_RELAY_PID}" 2>/dev/null || true
+      wait "${BROWSER_RELAY_PID}" 2>/dev/null || true
+    fi
+    rm -rf -- "${BROWSER_RELAY_DIR}"
+  }
+  trap cleanup_browser_relay EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  python3 "${SCRIPT_DIR}/codex-browser" --serve "${BROWSER_RELAY_DIR}/socket" &
+  BROWSER_RELAY_PID=$!
+  python3 "${SCRIPT_DIR}/codex-browser" --wait "${BROWSER_RELAY_DIR}/socket" "${BROWSER_RELAY_PID}"
+  RUN_ARGS+=(
+    -e BROWSER=/usr/local/bin/codex-browser
+    -e CODEX_BROWSER_SOCKET=/codex-browser-relay/socket
+    -v "${SCRIPT_DIR}/codex-browser:/usr/local/bin/codex-browser:ro"
+    -v "${SCRIPT_DIR}/codex-browser:/usr/local/bin/xdg-open:ro"
+    -v "${BROWSER_RELAY_DIR}:/codex-browser-relay:ro"
+  )
+  # Keep the launcher alive to clean up the relay when the session ends.
+  "${ENGINE}" run "${RUN_ARGS[@]}" "${IMAGE_NAME}" "$@" || exit "$?"
+else
+  exec "${ENGINE}" run "${RUN_ARGS[@]}" "${IMAGE_NAME}" "$@"
+fi

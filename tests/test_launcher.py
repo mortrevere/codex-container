@@ -104,6 +104,35 @@ esac
             self.assertEqual(self.values(run, "--group-add"), ["keep-groups"])
             self.assertEqual(self.values(run, "--user"), ["12001:13001"])
 
+    def test_host_browser_mounts_and_cleanup(self):
+        self.engine("docker")
+        self.assert_success(self.launch(BROWSER="firefox"))
+        run = self.runs()[-1]
+        self.assertIn("BROWSER=/usr/local/bin/codex-browser", self.values(run, "-e"))
+        mounts = self.values(run, "-v")
+        self.assertIn(f"{ROOT}/codex-browser:/usr/local/bin/codex-browser:ro", mounts)
+        relay = next(mount for mount in mounts if mount.endswith(":/codex-browser-relay:ro"))
+        self.assertFalse(Path(relay.split(":")[0]).exists())
+
+    def test_host_browser_can_be_disabled(self):
+        self.engine("docker")
+        self.assert_success(self.launch(CODEX_HOST_BROWSER="0"))
+        self.assertNotIn("BROWSER=/usr/local/bin/codex-browser", self.values(self.runs()[-1], "-e"))
+
+    def test_host_browser_opens_from_session_and_cleans_up_on_failure(self):
+        self.engine("docker")
+        opened = self.root / "opened.json"
+        self.script("host-browser", "#!/usr/bin/env python3\nimport json, sys\n"
+                    "from pathlib import Path\n"
+                    f"Path({str(opened)!r}).write_text(json.dumps(sys.argv[1:]))\n")
+        url = "https://grafana.dashboard.sekoia.io/explore?panes=%7B%7D&schemaVersion=1"
+        result = self.launch(BROWSER="host-browser", BROWSER_TEST_URL=url, SESSION_EXIT_CODE="7")
+        self.assertEqual(result.returncode, 7, result.stderr)
+        self.assertEqual(json.loads(opened.read_text()), [url])
+        relay = next(mount for mount in self.values(self.runs()[-1], "-v")
+                     if mount.endswith(":/codex-browser-relay:ro"))
+        self.assertFalse(Path(relay.split(":")[0]).exists())
+
     def test_explicit_docker_overrides_podman(self):
         self.engine("podman")
         self.engine("docker")

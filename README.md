@@ -35,12 +35,12 @@ and accessible to your user (`docker info` must succeed).
 
 ## Installation
 
-Keep `codex-container`, `codex-container-init`, `Dockerfile`, and `profiles/`
+Keep `codex-container`, `codex-container-init`, `codex-browser`, `Dockerfile`, and `profiles/`
 together. For example:
 
 ```bash
 mkdir -p ~/.local/lib/codex-container
-cp -a codex-container codex-container-init Dockerfile profiles \
+cp -a codex-container codex-container-init codex-browser Dockerfile profiles \
   ~/.local/lib/codex-container/
 ```
 
@@ -144,7 +144,22 @@ All optional, set as environment variables:
 | `HOST_CODEX_HOME` | `${XDG_DATA_HOME:-~/.local/share}/codex-cli` | Host directory for profile state and shared Codex login. |
 | `CODEX_PROFILE` | `default` | Profile, overridden by `--profile`. |
 | `CODEX_NTFY_TOPIC` | Empty / disabled | ntfy.sh topic for notifications. |
+| `CODEX_HOST_BROWSER` | `1` | Forward browser requests to the host; set `0` to disable. Requires host Python 3. |
 | `CODEX_GITHUB_TOKEN` / `GH_TOKEN` | From host `gh`, if available | GitHub token for `gh`, not Codex authentication. |
+
+## Browser integration
+
+Browser links opened by Codex and CLI tools are forwarded to your host browser
+through a private Unix socket. This uses your existing browser login for links
+such as Grafana Explore, without installing a desktop browser in the container.
+The launcher sets the container's `BROWSER` and provides `xdg-open`; the relay
+uses the host's `BROWSER` setting, then `xdg-open` or `gio open`. For example,
+`BROWSER=firefox codex` selects Firefox on the host. Only HTTP(S) links are accepted.
+
+Keep Python 3 and a working browser opener installed on the host. Set
+`CODEX_HOST_BROWSER=0` to disable forwarding. The socket and host relay are
+removed when the session exits. This opens links for you; it does not provide
+browser automation or access to page contents. No image rebuild is needed.
 
 ## Profiles and persistent state
 

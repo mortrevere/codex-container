@@ -21,6 +21,21 @@ if args[0] == "run" and "-it" in args and os.environ.get("ENGINE_ENV_LOG"):
     Path(os.environ["ENGINE_ENV_LOG"]).write_text(
         json.dumps(environment)
     )
+    if os.environ.get("BROWSER_TEST_URL"):
+        mounts = {}
+        for index, arg in enumerate(args):
+            if arg == "-v":
+                source, target, *_ = args[index + 1].split(":")
+                mounts[target] = source
+        client_env = {
+            **os.environ,
+            "CODEX_BROWSER_SOCKET": mounts["/codex-browser-relay"] + "/socket",
+        }
+        subprocess.run(
+            [mounts["/usr/local/bin/codex-browser"], os.environ["BROWSER_TEST_URL"]],
+            env=client_env, check=True,
+        )
+    sys.exit(int(os.environ.get("SESSION_EXIT_CODE", "0")))
 
 if args[0] == "info":
     if os.environ.get("FAIL_INFO"):
