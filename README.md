@@ -205,6 +205,10 @@ Built-in profiles:
   `http://localhost:18000/mcp` by default. Inherits the default hooks and
   commit-authorship instructions. Start both MCP servers before launching
   `codex --profile mcp`; the profile connects to them without starting them.
+  Grafana sends `Host: localhost:8000` to match the MCP server's default Host
+  allowlist when Docker maps host port 18000 to container port 8000. If your
+  server uses another internal port or allowlist, update `http_headers` in
+  `profiles/mcp/config.toml` to match.
 - `pony` - installs the native
   [Ponytail Codex plugin](https://github.com/DietrichGebert/ponytail).
   Its enabled lifecycle hooks run without a manual trust step.

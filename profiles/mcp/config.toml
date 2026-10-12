@@ -10,4 +10,6 @@ enabled = true
 
 [mcp_servers.grafana]
 url = "http://localhost:18000/mcp"
+# Docker maps host port 18000 to MCP port 8000; match the server's Host allowlist.
+http_headers = { Host = "localhost:8000" }
 enabled = true
