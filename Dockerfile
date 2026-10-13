@@ -11,6 +11,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        jq \
         kitty-terminfo \
         ncurses-term \
         nodejs \

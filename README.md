@@ -62,7 +62,7 @@ podman build . -f Dockerfile -t codex-container
 docker build . -f Dockerfile -t codex-container
 ```
 
-The image installs the official standalone Codex CLI, `gh`, `uv`, and `ruff`,
+The image installs the official standalone Codex CLI, `gh`, `jq`, `uv`, and `ruff`,
 plus Node.js for plugin hooks such as Ponytail's.
 
 ## Usage
