@@ -76,6 +76,7 @@ codex resume --all                  # include sessions from other working direct
 codex resume --last                 # resume the most recent session
 codex --profile pony               # start with the Ponytail plugin
 codex --profile mcp                # start with Kubernetes and Grafana MCP servers
+codex --profile full               # start with Ponytail and both MCP servers
 codex --profile pr create "focus on the API changes"
 codex --profile pr describe "https://github.com/OWNER/REPO/pull/123"
 codex --profile pr review "https://github.com/OWNER/REPO/pull/123"
@@ -227,6 +228,10 @@ Built-in profiles:
 - `pony` - installs the native
   [Ponytail Codex plugin](https://github.com/DietrichGebert/ponytail).
   Its enabled lifecycle hooks run without a manual trust step.
+- `full` - combines `pony` with both MCP servers from `mcp`, inheriting the
+  default hooks and commit-authorship instructions. Start both MCP servers
+  before launching `codex --profile full`. Its `init.sh` and `config.toml`
+  link to the corresponding `pony` and `mcp` files, so updates stay in sync.
 - `pr` - provides PR workflows using `codex exec`: `create`
   commits pending changes and opens/updates a draft PR without running tests;
   `describe` updates a PR's title/description and non-standard commit messages;
