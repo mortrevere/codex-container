@@ -62,8 +62,10 @@ podman build . -f Dockerfile -t codex-container
 docker build . -f Dockerfile -t codex-container
 ```
 
-The image installs the official standalone Codex CLI, `gh`, `jq`, `uv`, and `ruff`,
-plus Node.js for plugin hooks such as Ponytail's.
+The image installs the official standalone Codex CLI, `gh`, `jq`, `uv`, `ruff`,
+and the latest Helm 3 release, plus Node.js for plugin hooks such as Ponytail's.
+Helm's official installer verifies the download checksum. Run `codex update`
+to rebuild without cache and pick up the latest Helm 3 release.
 
 ## Usage
 

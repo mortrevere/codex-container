@@ -15,9 +15,17 @@ RUN apt-get update \
         kitty-terminfo \
         ncurses-term \
         nodejs \
+        openssl \
         python3 \
         python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install the latest Helm 3 release using the official, checksum-verifying installer.
+RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
+        -o /tmp/get-helm-3 \
+    && bash /tmp/get-helm-3 --no-sudo \
+    && rm /tmp/get-helm-3 \
+    && helm version --short
 
 # Install gh from GitHub's official apt repo so the CLI stays up to date
 # (Ubuntu's bundled package can lag well behind upstream).
