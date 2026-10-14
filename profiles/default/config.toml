@@ -1,3 +1,5 @@
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
 cli_auth_credentials_store = "file"
 check_for_update_on_startup = false
 

@@ -216,6 +216,8 @@ selected profile.
 
 Built-in profiles:
 
+`default`, `pony`, and `full` default to `gpt-6.1-sol` with high reasoning.
+
 - `default` - native notification hooks and commit-authorship instructions.
 - `mcp` - enables Kubernetes at `http://localhost:8080/mcp` and Grafana at
   `http://localhost:18000/mcp` by default. Inherits the default hooks and
@@ -230,8 +232,8 @@ Built-in profiles:
   Its enabled lifecycle hooks run without a manual trust step.
 - `full` - combines `pony` with both MCP servers from `mcp`, inheriting the
   default hooks and commit-authorship instructions. Start both MCP servers
-  before launching `codex --profile full`. Its `init.sh` and `config.toml`
-  link to the corresponding `pony` and `mcp` files, so updates stay in sync.
+  before launching `codex --profile full`. Its `init.sh` links to the `pony`
+  file; its own `config.toml` configures the model and both MCP servers.
 - `pr` - provides PR workflows using `codex exec`: `create`
   commits pending changes and opens/updates a draft PR without running tests;
   `describe` updates a PR's title/description and non-standard commit messages;

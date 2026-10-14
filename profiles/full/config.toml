@@ -1,1 +1,17 @@
-../mcp/config.toml
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
+cli_auth_credentials_store = "file"
+check_for_update_on_startup = false
+
+[tui]
+status_line = ["model-with-reasoning", "weekly-limit", "context-remaining", "git-branch"]
+
+[mcp_servers.kubernetes]
+url = "http://localhost:8080/mcp"
+enabled = true
+
+[mcp_servers.grafana]
+url = "http://localhost:18000/mcp"
+# Docker maps host port 18000 to MCP port 8000; match the server's Host allowlist.
+http_headers = { Host = "localhost:8000" }
+enabled = true
