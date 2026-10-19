@@ -606,6 +606,28 @@ elif "--profile" in args:
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.cleanup_ids()), 2)
 
+    def test_same_day_cleanup_skips_python_even_in_another_time_zone(self):
+        self.session_file(1, 30)
+        now = datetime.now(timezone.utc)
+        marker = self.state / "profiles/default/.session-cleanup-last-run"
+        marker.write_text(now.date().isoformat() + "\n")
+        python_log = self.root / "python-starts"
+        python = shutil.which("python3")
+        self.bin.joinpath("python3").unlink()
+        self.script("python3", f"""#!/usr/bin/env bash
+if [ "${{1:-}}" = - ]; then
+    printf 'started\\n' >> "$PYTHON_START_LOG"
+fi
+exec {python!r} "$@"
+""")
+        # Use a local date different from UTC, regardless of the hour we run.
+        tz = "UTC+12" if now.hour < 12 else "UTC-14"
+        result = self.run_init("hello", TZ=tz, PYTHON_START_LOG=str(python_log))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.cleanup_ids(), [])
+        self.assertEqual(python_log.read_text().splitlines(), ["started"])
+
     def test_cleanup_ignores_malformed_marker_and_retries_refused_deletion(self):
         old = self.session_file(1, 30)
         marker = self.state / "profiles/default/.session-cleanup-last-run"

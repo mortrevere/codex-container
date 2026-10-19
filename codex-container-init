@@ -70,6 +70,11 @@ case "$cli_command" in
     ;;
 esac
 if ! "$cli_info" && "$cleanup_sessions"; then
+  TZ=UTC printf -v cleanup_today '%(%Y-%m-%d)T' -1
+  cleanup_last_run=""
+  IFS= read -r cleanup_last_run 2>/dev/null < "$CODEX_HOME/.session-cleanup-last-run" || true
+  # Skip the Python process and session scan when today's cleanup already succeeded.
+  if [ "$cleanup_last_run" != "$cleanup_today" ]; then
 python3 - <<'PY'
 from datetime import datetime, timedelta, timezone
 import os
@@ -132,6 +137,7 @@ try:
 except (OSError, ValueError, subprocess.TimeoutExpired) as error:
     print(f"warning: session cleanup failed: {error}", file=sys.stderr)
 PY
+  fi
 fi
 
 # Trust the launch directory and any --cd target on every invocation. Include
