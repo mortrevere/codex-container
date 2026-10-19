@@ -216,6 +216,15 @@ same profile, for example `codex --profile pr resume <session-id>`.
 `resume --all` includes sessions across working directories within the
 selected profile.
 
+On session startup, cleanup runs once per UTC day for the selected profile,
+using `CODEX_HOME/.session-cleanup-last-run`. It asks `codex delete --force`
+to delete sessions whose rollout files in `sessions/` and `archived_sessions/`
+were all last modified more than 14 days ago. Codex protects sessions in use
+and history referenced by other sessions, and updates its indexes. Failed
+deletions warn and retry on a later launch without blocking startup. An unreadable
+marker also warns; malformed marker text triggers another cleanup attempt.
+Login/logout, management commands, help/version, and the debug shell skip cleanup.
+
 Built-in profiles:
 
 `default`, `pony`, and `full` default to `gpt-6.1-sol` with high reasoning.

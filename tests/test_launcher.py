@@ -2,11 +2,14 @@
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
+from uuid import UUID
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -493,6 +496,9 @@ with open(os.environ["CODEX_CALLS_FILE"], "a") as file:
     file.write(json.dumps({"home": str(home), "args": args}) + "\\n")
 if os.environ.get("FAIL_CODEX"):
     sys.exit(7)
+if "delete" in args and "--force" in args and os.environ.get("FAIL_DELETE"):
+    print("history still referenced or writer active", file=sys.stderr)
+    sys.exit(1)
 if "login" in args and "status" not in args:
     (home / "auth.json").unlink(missing_ok=True)
     (home / "auth.json").write_text('{"OPENAI_API_KEY": "fake-shared-key"}')
@@ -540,6 +546,110 @@ elif "--profile" in args:
             "-c", 'cli_auth_credentials_store="file"', "-c",
         ])
         self.assertEqual(self.codex_calls[-1]["args"][-2:], ["exec", "hello"])
+
+    def session_file(self, number, age_days, directory="sessions", profile="default",
+                     suffix=""):
+        session_id = str(UUID(int=number))
+        path = (self.state / "profiles" / profile / directory /
+                f"rollout-2026-01-01T00-00-00-{session_id}{suffix}.jsonl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("session history")
+        modified = time.time() - age_days * 86400
+        os.utime(path, (modified, modified))
+        return path
+
+    def cleanup_ids(self):
+        return [call["args"][-1] for call in self.codex_calls
+                if call["args"][:3] == ["--no-daemon", "delete", "--force"]]
+
+    def test_cleanup_uses_codex_deletion_for_stale_sessions_in_selected_profile(self):
+        old = [self.session_file(1, 15),
+               self.session_file(2, 14.01, directory="archived_sessions")]
+        for number, age in ((3, 0), (4, 13), (5, 13.99)):
+            self.session_file(number, age)
+        self.session_file(6, 30, profile="pr")
+        # A recent rollout keeps the entire session, including older rollouts.
+        self.session_file(7, 30)
+        self.session_file(7, 0, suffix="_" + str(UUID(int=8)))
+        sessions = self.state / "profiles/default/sessions"
+        (sessions / "unrelated.txt").write_text("keep")
+        external = self.root / "external"
+        external.mkdir()
+        (external / "old.jsonl").write_text("external history")
+        (sessions / "linked-directory").symlink_to(external, target_is_directory=True)
+        (sessions / f"rollout-2026-01-01T00-00-00-{UUID(int=9)}.jsonl").symlink_to(old[0])
+
+        result = self.run_init("exec", "hello")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertCountEqual(self.cleanup_ids(), [str(UUID(int=1)), str(UUID(int=2))])
+        # The launcher delegates deletion; it must never unlink rollout files itself.
+        self.assertTrue(all(path.exists() for path in old))
+        self.assertTrue(all(call["home"] == str(self.state / "profiles/default")
+                            for call in self.codex_calls))
+
+    def test_cleanup_runs_once_per_utc_day(self):
+        self.session_file(1, 30)
+        marker = self.state / "profiles/default/.session-cleanup-last-run"
+        result = self.run_init("hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(marker.read_text().strip(), datetime.now(timezone.utc).date().isoformat())
+        self.assertEqual(len(self.cleanup_ids()), 1)
+        marker_mtime = marker.stat().st_mtime_ns
+        result = self.run_init("resume", "--last")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.cleanup_ids()), 1)
+        self.assertEqual(marker.stat().st_mtime_ns, marker_mtime)
+        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+        marker.write_text(yesterday.isoformat() + "\n")
+        result = self.run_init("hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.cleanup_ids()), 2)
+
+    def test_cleanup_ignores_malformed_marker_and_retries_refused_deletion(self):
+        old = self.session_file(1, 30)
+        marker = self.state / "profiles/default/.session-cleanup-last-run"
+        marker.write_bytes(b"\xff")
+        result = self.run_init("hello", FAIL_DELETE="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("warning: session cleanup failed", result.stderr)
+        self.assertIn("history still referenced or writer active", result.stderr)
+        self.assertTrue(old.exists())
+        self.assertEqual(marker.read_bytes(), b"\xff")
+        result = self.run_init("hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.cleanup_ids()), 2)
+        self.assertEqual(marker.read_text().strip(), datetime.now(timezone.utc).date().isoformat())
+
+    def test_cleanup_read_error_warns_without_blocking_launch(self):
+        self.session_file(1, 30)
+        marker = self.state / "profiles/default/.session-cleanup-last-run"
+        marker.mkdir()
+        result = self.run_init("hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("warning: session cleanup failed", result.stderr)
+        self.assertEqual(self.cleanup_ids(), [])
+        marker.rmdir()
+        result = self.run_init("hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.cleanup_ids()), 1)
+
+    def test_non_session_commands_skip_cleanup(self):
+        self.session_file(1, 30)
+        marker = self.state / "profiles/default/.session-cleanup-last-run"
+        commands = (("login", "status"), ("logout",), ("plugin", "list"),
+                    ("features", "list"), ("bash", "-c", "exit 0"),
+                    ("--help",), ("--version",), ("-h",), ("-V",),
+                    ("exec", "--help"), ("resume", "--help"), ("help",),
+                    ("archive", "id"), ("unarchive", "id"), ("delete", "id"),
+                    ("queue", "id"), ("agents",), ("mcp", "list"),
+                    ("sandbox", "--help"), ("exec-server", "--help"))
+        for command in commands:
+            with self.subTest(command=command):
+                result = self.run_init(*command)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.cleanup_ids(), [])
+                self.assertFalse(marker.exists())
 
     def test_sessions_trust_hooks_and_launch_folders_across_profiles(self):
         import tomllib

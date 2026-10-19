@@ -13,10 +13,14 @@ cp "$CODEX_PROFILE_CONFIG" "$CODEX_HOME/container.config.toml"
 args=("$@")
 cli_command=""
 cli_subcommand=""
+cli_info=false
 for ((index = 0; index < ${#args[@]}; index++)); do
   case "${args[index]}" in
-    -c|--config|-m|--model|-C|--cd|-s|--sandbox|-a|--ask-for-approval|-p|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|--add-dir)
+    -c|--config|-m|--model|-C|--cd|-s|--sandbox|-a|--ask-for-approval|-p|--enable|--disable|--remote|--remote-auth-token-env|--local-provider|--add-dir|-i|--image)
       index=$((index + 1))
+      ;;
+    -h|--help|-V|--version)
+      cli_info=true
       ;;
     --)
       break
@@ -24,9 +28,10 @@ for ((index = 0; index < ${#args[@]}; index++)); do
     -*)
       ;;
     *)
-      cli_command="${args[index]}"
-      cli_subcommand="${args[index + 1]:-}"
-      break
+      if [ -z "$cli_command" ]; then
+        cli_command="${args[index]}"
+        cli_subcommand="${args[index + 1]:-}"
+      fi
       ;;
   esac
 done
@@ -56,6 +61,78 @@ case "$cli_command" in
     fi
     ;;
 esac
+
+# Only session commands run retention, including profile workflow commands.
+cleanup_sessions=true
+case "$cli_command" in
+  help|agents|mcp|sandbox|queue|archive|unarchive|delete|update|exec-server|a)
+    cleanup_sessions=false
+    ;;
+esac
+if ! "$cli_info" && "$cleanup_sessions"; then
+python3 - <<'PY'
+from datetime import datetime, timedelta, timezone
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+from uuid import UUID
+
+
+def walk_error(error):
+    raise error
+
+
+home = Path(os.environ["CODEX_HOME"])
+try:
+    marker = home / ".session-cleanup-last-run"
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    if marker.exists() and marker.read_text(errors="replace").strip() == today:
+        sys.exit(0)
+    cutoff = (now - timedelta(days=14)).timestamp()
+    modified = {}
+    for name in ("sessions", "archived_sessions"):
+        directory = home / name
+        if directory.is_symlink() or not directory.exists():
+            continue
+        for parent, _, filenames in os.walk(directory, onerror=walk_error):
+            for filename in filenames:
+                match = re.fullmatch(
+                    r"rollout-.+-([0-9a-f-]{36})(?:_[0-9a-f-]{36})?\.jsonl(?:\.zst)?",
+                    filename,
+                )
+                if not match:
+                    continue
+                session_id = str(UUID(match[1]))
+                try:
+                    info = (Path(parent) / filename).lstat()
+                    if stat.S_ISREG(info.st_mode):
+                        modified[session_id] = max(modified.get(session_id, 0), info.st_mtime)
+                except FileNotFoundError:
+                    pass
+    failed = False
+    for session_id, mtime in modified.items():
+        if mtime >= cutoff:
+            continue
+        # Codex checks live writers and history references and updates its indexes.
+        result = subprocess.run(
+            ["codex", "--no-daemon", "delete", "--force", session_id],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace",
+            timeout=30,
+        )
+        if result.returncode:
+            failed = True
+            print(f"warning: session cleanup failed for {session_id}: {result.stderr.strip()}",
+                  file=sys.stderr)
+    if not failed:
+        marker.write_text(today + "\n")
+except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+    print(f"warning: session cleanup failed: {error}", file=sys.stderr)
+PY
+fi
 
 # Trust the launch directory and any --cd target on every invocation. Include
 # parent directories so project configuration discovered there is loaded too.
