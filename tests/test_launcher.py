@@ -316,6 +316,24 @@ esac
                     "bash", "/codex-container-init", *forwarded,
                 ])
 
+    def test_only_pr_profile_containers_are_limited_to_one_cpu(self):
+        cases = [
+            (("--profile", "pr", "create"), {}, ["1"]),
+            (("--profile=pr", "describe"), {}, ["1"]),
+            (("review",), {"CODEX_PROFILE": "pr"}, ["1"]),
+            (("--profile", "pr", "resume", "--last"), {"CODEX_HOST_BROWSER": "0"}, ["1"]),
+            (("--profile=default",), {"CODEX_PROFILE": "pr"}, []),
+            (("--profile", "pony"), {}, []),
+            (("--profile", "mcp"), {}, []),
+            (("--profile", "full"), {}, []),
+        ]
+        for engine in ("docker", "podman"):
+            self.engine(engine)
+            for args, env, expected in cases:
+                with self.subTest(engine=engine, args=args, env=env):
+                    self.assert_success(self.launch(*args, CONTAINER_ENGINE=engine, **env))
+                    self.assertEqual(self.values(self.runs()[-1], "--cpus"), expected)
+
     def test_profile_command_is_wired_when_present(self):
         self.engine("docker")
         self.assert_success(self.launch("--profile", "pr", "describe", "https://github.com/o/r/pull/1"))

@@ -344,6 +344,10 @@ RUN_ARGS+=(
   -v "${SHARED_AUTH_HOME}:/codex-auth"
 )
 
+if [ "${PROFILE_NAME}" = pr ]; then
+  RUN_ARGS+=(--cpus 1)
+fi
+
 # The browser runs on the host, retaining its desktop environment and login.
 # A private bind-mounted Unix socket also works with rootless engine networks.
 if [ "${CODEX_HOST_BROWSER:-1}" != 0 ] && command -v python3 >/dev/null 2>&1; then

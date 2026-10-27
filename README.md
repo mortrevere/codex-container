@@ -254,7 +254,8 @@ Built-in profiles:
   go before the workflow name. `create` defaults to GPT-6-Luna with high
   reasoning; `describe` (also `description`) and `review` default to
   GPT-6.1-Sol with low reasoning.
-  CLI model and reasoning overrides take precedence.
+  CLI model and reasoning overrides take precedence. Containers launched with
+  this profile are limited to 1 CPU, including resumed sessions.
 
 Delete only a profile's state directory to reset it without affecting the
 others or the shared login.
