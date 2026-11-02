@@ -41,7 +41,12 @@ if args[0] == "info":
     if os.environ.get("FAIL_INFO"):
         print("permission denied connecting to Docker socket", file=sys.stderr)
         sys.exit(1)
-    print(os.environ.get("SECURITY_OPTIONS", '["name=seccomp,profile=builtin"]'))
+    if args[-1] == '{{.Host.RemoteSocket.Path}}':
+        print(os.environ["PODMAN_SOCKET"])
+    else:
+        print(os.environ.get("SECURITY_OPTIONS", '["name=seccomp,profile=builtin"]'))
+elif args[:2] == ["context", "inspect"]:
+    print(os.environ.get("DOCKER_CONTEXT_ENDPOINT", "unix:///var/run/docker.sock"))
 elif args[:2] == ["image", "inspect"]:
     sys.exit(int(os.environ.get("IMAGE_MISSING", "0")))
 elif args[0] == "run" and "-it" not in args:

@@ -62,8 +62,9 @@ podman build . -f Dockerfile -t codex-container
 docker build . -f Dockerfile -t codex-container
 ```
 
-The image installs the official standalone Codex CLI, `gh`, `jq`, `uv`, `ruff`,
-and the latest Helm 3 release, plus Node.js for plugin hooks such as Ponytail's.
+The image installs the official standalone Codex CLI, Docker CLI, `gh`, `jq`,
+`uv`, `ruff`, and the latest Helm 3 release, plus Node.js for plugin hooks such
+as Ponytail's.
 Helm's official installer verifies the download checksum. Run `codex update`
 to rebuild without cache and pick up the latest Helm 3 release.
 
@@ -89,12 +90,14 @@ codex login --device-auth           # log in for all profiles
 codex login status                 # check the shared account
 codex logout                       # sign out the shared account
 codex bash                         # debug inside the container
+codex --docker                     # allow this session to control host containers
 codex update                       # rebuild without cache, keeping a backup image tag
 CONTAINER_ENGINE=docker codex       # explicitly select Docker
 ```
 
 Use native Codex arguments. Standard arguments are forwarded without
-translation. `--profile` is reserved for the wrapper's directory-based profiles.
+translation. `--profile` is reserved for the wrapper's directory-based profiles,
+and `--docker` enables host container-engine access for this invocation.
 Use profile configuration or `--model` / `-m` to select a model.
 
 The wrapper allocates an interactive container terminal (`-it`), including
@@ -296,9 +299,9 @@ The image is shared between users; no user-specific rebuild is needed.
 Before launching, the wrapper probes writability and host ownership through
 the workspace, selected profile state, sessions, and shared-auth mounts.
 Failures preserve the engine error, stop startup, and clean temporary probes.
-It does not recursively chown files, make them world-writable, mount the
-Docker socket, or request privileged mode. SELinux labeling is disabled for
-these mounts; host files are not relabeled with `:Z`.
+It does not recursively chown files, make them world-writable, or request
+privileged mode. The engine socket is mounted only with `--docker`. SELinux
+labeling is disabled for these mounts; host files are not relabeled with `:Z`.
 
 For Docker socket errors, configure rootless Docker or administrator-provided
 access. **Do not use sudo or make the socket world-writable**: sudo changes
@@ -313,6 +316,27 @@ host supplementary groups; for group-only access, use Podman with
 Bypassing Codex approvals and its inner sandbox is intentional. The outer
 container still has writable host mounts, credentials, and host networking
 (inside the daemon's network namespace for rootless Docker).
+
+### Host container access (`--docker`)
+
+`codex --docker` mounts the selected engine's local Unix socket read/write at
+`/var/run/docker.sock` and sets `DOCKER_HOST` inside that session. Use the included
+`docker` CLI to create, start, stop, and remove host containers, including when
+the host uses Podman's Docker-compatible API. The flag does not change engine
+selection; use `CONTAINER_ENGINE=docker codex --docker` to select Docker explicitly.
+
+Docker's active context and `DOCKER_HOST` are respected (`DOCKER_CONTEXT` takes
+precedence). Podman uses the socket reported by `podman info`. For rootless
+Podman, first run `systemctl --user start podman.socket` on the host; rootful
+Podman uses `systemctl start podman.socket`. Missing sockets and non-Unix Docker
+endpoints fail startup. Without the flag, no engine socket is mounted.
+
+This grants full control over the host engine: root-equivalent host access for
+a rootful engine, or the daemon user's access for a rootless engine. Containers
+created through it live on the host and are not automatically removed when
+Codex exits. Bind-mount source paths refer to the host filesystem, so use the
+host checkout path rather than `/workspace` when mounting project files into
+other containers. Rebuild existing images with `codex update` to get the Docker CLI.
 
 ## Launcher regression tests
 

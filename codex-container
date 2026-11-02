@@ -27,10 +27,15 @@ GID_VALUE="$(id -g)"
 CALLER_PWD="$(pwd)"
 HOST_CODEX_HOME="${HOST_CODEX_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/codex-cli}"
 PROFILE_NAME="${CODEX_PROFILE:-default}"
+DOCKER_ACCESS=false
 CODEX_ARGS=()
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --docker)
+      DOCKER_ACCESS=true
+      shift
+      ;;
     --profile)
       if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         echo "error: --profile requires a profile name" >&2
@@ -175,6 +180,36 @@ if [[ "${1:-}" == "update" ]]; then
     "$(dirname "${DOCKERFILE_PATH}")"
   echo "Done. Previous image kept as ${IMAGE_NAME%:*}:${BACKUP_TAG}"
   exit 0
+fi
+
+DOCKER_SOCKET_ARGS=()
+if "${DOCKER_ACCESS}"; then
+  if [ "${ENGINE}" = podman ]; then
+    SOCKET_ENDPOINT="unix://$("${ENGINE}" info --format '{{.Host.RemoteSocket.Path}}')"
+  elif [ -n "${DOCKER_HOST:-}" ] && [ -z "${DOCKER_CONTEXT:-}" ]; then
+    SOCKET_ENDPOINT="${DOCKER_HOST}"
+  else
+    SOCKET_ENDPOINT="$("${ENGINE}" context inspect --format '{{.Endpoints.docker.Host}}')"
+  fi
+  case "${SOCKET_ENDPOINT}" in
+    unix:///*) SOCKET_PATH="${SOCKET_ENDPOINT#unix://}" ;;
+    *)
+      echo "error: --docker requires a local Unix socket; got ${SOCKET_ENDPOINT}" >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -S "${SOCKET_PATH}" ]; then
+    echo "error: --docker socket not found or not a Unix socket: ${SOCKET_PATH}" >&2
+    if [ "${ENGINE}" = podman ]; then
+      echo "       start the host API socket with 'systemctl --user start podman.socket' (rootless)" >&2
+      echo "       or 'systemctl start podman.socket' (rootful)" >&2
+    fi
+    exit 1
+  fi
+  DOCKER_SOCKET_ARGS+=(
+    -v "${SOCKET_PATH}:/var/run/docker.sock"
+    -e DOCKER_HOST=unix:///var/run/docker.sock
+  )
 fi
 
 # Build the image only when it's missing. Use `codex-container update` to
@@ -339,6 +374,7 @@ RUN_ARGS=(
 
 RUN_ARGS+=(
   "${CONTAINER_IDENTITY_ARGS[@]}"
+  "${DOCKER_SOCKET_ARGS[@]}"
   -v "${CALLER_PWD}:${WORKDIR_IN_CONTAINER}"
   -v "${PROFILE_CODEX_HOME}:/codex-state"
   -v "${SHARED_AUTH_HOME}:/codex-auth"

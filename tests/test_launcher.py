@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -106,6 +107,84 @@ esac
             self.assertIn("--userns=keep-id", run)
             self.assertEqual(self.values(run, "--group-add"), ["keep-groups"])
             self.assertEqual(self.values(run, "--user"), ["12001:13001"])
+
+    def test_docker_socket_is_opt_in_and_only_mounted_in_the_session(self):
+        host_socket = self.root / "engine socket"
+        listener = socket.socket(socket.AF_UNIX)
+        self.addCleanup(listener.close)
+        listener.bind(str(host_socket))
+        endpoint = f"unix://{host_socket}"
+        for engine in ("docker", "podman"):
+            self.engine(engine)
+            for enabled in (False, True):
+                with self.subTest(engine=engine, enabled=enabled):
+                    self.log.unlink(missing_ok=True)
+                    args = ["--docker", "--profile", "pony", "bash"] if enabled else ["bash"]
+                    self.assert_success(self.launch(
+                        *args, CONTAINER_ENGINE=engine, DOCKER_CONTEXT_ENDPOINT=endpoint,
+                        PODMAN_SOCKET=str(host_socket),
+                    ))
+                    for run in self.runs():
+                        mounted = f"{host_socket}:/var/run/docker.sock" in self.values(run, "-v")
+                        forwarded = "DOCKER_HOST=unix:///var/run/docker.sock" in self.values(run, "-e")
+                        self.assertEqual(mounted, enabled and "-it" in run)
+                        self.assertEqual(forwarded, mounted)
+                    self.assertNotIn("--docker", self.runs()[-1])
+                    self.assertEqual(self.runs()[-1][-3:], ["bash", "/codex-container-init", "bash"])
+
+    def test_docker_socket_respects_host_and_context_precedence(self):
+        self.engine("docker")
+        host_socket = self.root / "socket"
+        listener = socket.socket(socket.AF_UNIX)
+        self.addCleanup(listener.close)
+        listener.bind(str(host_socket))
+        endpoint = f"unix://{host_socket}"
+        for env in (
+            {"DOCKER_HOST": endpoint, "DOCKER_CONTEXT_ENDPOINT": "tcp://ignored:2375"},
+            {"DOCKER_CONTEXT": "local", "DOCKER_HOST": "tcp://ignored:2375",
+             "DOCKER_CONTEXT_ENDPOINT": endpoint},
+            {"SECURITY_OPTIONS": '["name=rootless"]', "DOCKER_CONTEXT_ENDPOINT": endpoint},
+        ):
+            with self.subTest(env=env):
+                self.assert_success(self.launch("--docker", CODEX_HOST_BROWSER="0", **env))
+                self.assertIn(f"{host_socket}:/var/run/docker.sock", self.values(self.runs()[-1], "-v"))
+
+    def test_docker_socket_rejects_non_unix_endpoints(self):
+        self.engine("docker")
+        for endpoint in ("tcp://localhost:2375", "ssh://host", "unix://relative", ""):
+            with self.subTest(endpoint=endpoint):
+                result = self.launch("--docker", DOCKER_CONTEXT_ENDPOINT=endpoint)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("--docker requires a local Unix socket", result.stderr)
+                self.assertEqual(self.runs(), [])
+                self.assertFalse(self.state.exists())
+
+    def test_docker_socket_requires_an_existing_socket(self):
+        host_socket = self.root / "not-a-socket"
+        for engine in ("docker", "podman"):
+            self.engine(engine)
+            for exists in (False, True):
+                with self.subTest(engine=engine, exists=exists):
+                    if exists:
+                        host_socket.touch()
+                    result = self.launch(
+                        "--docker", CONTAINER_ENGINE=engine,
+                        DOCKER_CONTEXT_ENDPOINT=f"unix://{host_socket}", PODMAN_SOCKET=str(host_socket),
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("--docker socket not found or not a Unix socket", result.stderr)
+                    if engine == "podman":
+                        self.assertIn("systemctl --user start podman.socket", result.stderr)
+                    self.assertEqual(self.runs(), [])
+                    self.assertFalse(self.state.exists())
+                    host_socket.unlink(missing_ok=True)
+
+    def test_docker_flag_after_separator_is_forwarded_without_socket_access(self):
+        self.engine("docker")
+        self.assert_success(self.launch("exec", "--", "--docker"))
+        self.assertEqual(self.runs()[-1][-3:], ["exec", "--", "--docker"])
+        self.assertNotIn("DOCKER_HOST=unix:///var/run/docker.sock", self.values(self.runs()[-1], "-e"))
+        self.assertFalse(any(call[1:3] == ["context", "inspect"] for call in self.calls))
 
     def test_host_browser_mounts_and_cleanup(self):
         self.engine("docker")

@@ -1,4 +1,8 @@
+FROM docker:cli AS docker-cli
 FROM ubuntu:24.04
+
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+RUN docker --version
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/usr/local/bin:/usr/bin:/bin"
