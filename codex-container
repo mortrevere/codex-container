@@ -28,12 +28,33 @@ CALLER_PWD="$(pwd)"
 HOST_CODEX_HOME="${HOST_CODEX_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/codex-cli}"
 PROFILE_NAME="${CODEX_PROFILE:-default}"
 DOCKER_ACCESS=false
+SSH_AGENT_PATH=""
 CODEX_ARGS=()
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --docker)
       DOCKER_ACCESS=true
+      shift
+      ;;
+    --ssh)
+      SSH_AGENT_PATH=/run/user/1000/ssh-agent
+      if [ "$#" -ge 2 ] && [[ "$2" != -* ]]; then
+        SSH_AGENT_PATH="$2"
+        shift
+      fi
+      if [ -z "${SSH_AGENT_PATH}" ]; then
+        echo "error: --ssh requires a non-empty socket path" >&2
+        exit 1
+      fi
+      shift
+      ;;
+    --ssh=*)
+      SSH_AGENT_PATH="${1#--ssh=}"
+      if [ -z "${SSH_AGENT_PATH}" ]; then
+        echo "error: --ssh requires a non-empty socket path" >&2
+        exit 1
+      fi
       shift
       ;;
     --profile)
@@ -212,6 +233,22 @@ if "${DOCKER_ACCESS}"; then
   )
 fi
 
+SSH_AGENT_ARGS=()
+if [ -n "${SSH_AGENT_PATH}" ]; then
+  if [ ! -S "${SSH_AGENT_PATH}" ]; then
+    echo "error: --ssh socket not found or not a Unix socket: ${SSH_AGENT_PATH}" >&2
+    exit 1
+  fi
+  # Bind sources must be absolute; relative paths would be treated as volumes.
+  if [[ "${SSH_AGENT_PATH}" != /* ]]; then
+    SSH_AGENT_PATH="${CALLER_PWD}/${SSH_AGENT_PATH}"
+  fi
+  SSH_AGENT_ARGS+=(
+    -v "${SSH_AGENT_PATH}:/ssh-agent"
+    -e SSH_AUTH_SOCK=/ssh-agent
+  )
+fi
+
 # Build the image only when it's missing. Use `codex-container update` to
 # force a rebuild once the image exists.
 if ! "${ENGINE}" image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
@@ -375,6 +412,7 @@ RUN_ARGS=(
 RUN_ARGS+=(
   "${CONTAINER_IDENTITY_ARGS[@]}"
   "${DOCKER_SOCKET_ARGS[@]}"
+  "${SSH_AGENT_ARGS[@]}"
   -v "${CALLER_PWD}:${WORKDIR_IN_CONTAINER}"
   -v "${PROFILE_CODEX_HOME}:/codex-state"
   -v "${SHARED_AUTH_HOME}:/codex-auth"

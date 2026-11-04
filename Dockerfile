@@ -19,6 +19,7 @@ RUN apt-get update \
         kitty-terminfo \
         ncurses-term \
         nodejs \
+        openssh-client \
         openssl \
         python3 \
         python3-pip \

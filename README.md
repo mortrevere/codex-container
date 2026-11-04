@@ -62,7 +62,7 @@ podman build . -f Dockerfile -t codex-container
 docker build . -f Dockerfile -t codex-container
 ```
 
-The image installs the official standalone Codex CLI, Docker CLI, `gh`, `jq`,
+The image installs the official standalone Codex CLI, Docker CLI, SSH client, `gh`, `jq`,
 `uv`, `ruff`, and the latest Helm 3 release, plus Node.js for plugin hooks such
 as Ponytail's.
 Helm's official installer verifies the download checksum. Run `codex update`
@@ -91,13 +91,16 @@ codex login status                 # check the shared account
 codex logout                       # sign out the shared account
 codex bash                         # debug inside the container
 codex --docker                     # allow this session to control host containers
+codex --ssh                        # forward /run/user/1000/ssh-agent
+codex --ssh /path/to/agent.sock     # forward another host SSH agent socket
 codex update                       # rebuild without cache, keeping a backup image tag
 CONTAINER_ENGINE=docker codex       # explicitly select Docker
 ```
 
 Use native Codex arguments. Standard arguments are forwarded without
 translation. `--profile` is reserved for the wrapper's directory-based profiles,
-and `--docker` enables host container-engine access for this invocation.
+`--docker` enables host container-engine access for this invocation, and
+`--ssh [PATH]` forwards a host SSH agent.
 Use profile configuration or `--model` / `-m` to select a model.
 
 The wrapper allocates an interactive container terminal (`-it`), including
@@ -337,6 +340,21 @@ created through it live on the host and are not automatically removed when
 Codex exits. Bind-mount source paths refer to the host filesystem, so use the
 host checkout path rather than `/workspace` when mounting project files into
 other containers. Rebuild existing images with `codex update` to get the Docker CLI.
+
+### Host SSH agent (`--ssh`)
+
+`codex --ssh` mounts `/run/user/1000/ssh-agent` at `/ssh-agent` and sets
+`SSH_AUTH_SOCK=/ssh-agent` inside the session. Use `codex --ssh /path/to/socket`
+or `codex --ssh=/path/to/socket` to select another socket. The path must exist
+and be a Unix socket. Without the flag, no SSH agent is forwarded.
+
+The next argument after `--ssh` is used as the socket path unless it starts
+with `-`. To use the default with a command, put the flag last, for example
+`codex exec "fetch the repository" --ssh`.
+
+The container can authenticate using keys loaded in the host agent; private
+key files stay on the host. Rebuild existing images with `codex update` to
+install the SSH client.
 
 ## Launcher regression tests
 

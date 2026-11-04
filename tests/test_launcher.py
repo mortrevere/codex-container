@@ -186,6 +186,110 @@ esac
         self.assertNotIn("DOCKER_HOST=unix:///var/run/docker.sock", self.values(self.runs()[-1], "-e"))
         self.assertFalse(any(call[1:3] == ["context", "inspect"] for call in self.calls))
 
+    def test_ssh_agent_is_opt_in_and_only_mounted_in_the_session(self):
+        host_socket = self.root / "ssh agent socket"
+        listener = socket.socket(socket.AF_UNIX)
+        self.addCleanup(listener.close)
+        listener.bind(str(host_socket))
+        for engine in ("docker", "podman"):
+            self.engine(engine)
+            for enabled in (False, True):
+                with self.subTest(engine=engine, enabled=enabled):
+                    self.log.unlink(missing_ok=True)
+                    args = ["--ssh", str(host_socket), "--profile", "pony", "bash"] if enabled else ["bash"]
+                    self.assert_success(self.launch(
+                        *args, CONTAINER_ENGINE=engine, SSH_AUTH_SOCK="/ignored/host-agent",
+                        CODEX_HOST_BROWSER="0",
+                    ))
+                    for run in self.runs():
+                        mounted = f"{host_socket}:/ssh-agent" in self.values(run, "-v")
+                        forwarded = "SSH_AUTH_SOCK=/ssh-agent" in self.values(run, "-e")
+                        self.assertEqual(mounted, enabled and "-it" in run)
+                        self.assertEqual(forwarded, mounted)
+                    self.assertNotIn("--ssh", self.runs()[-1])
+                    self.assertEqual(self.runs()[-1][-3:], ["bash", "/codex-container-init", "bash"])
+
+    def test_ssh_agent_default_path(self):
+        self.engine("docker")
+        host_socket = self.root / "agent"
+        listener = socket.socket(socket.AF_UNIX)
+        self.addCleanup(listener.close)
+        listener.bind(str(host_socket))
+        # Map only the default socket check to our fixture, leaving /run untouched.
+        bash_env = self.root / "bash-env"
+        bash_env.write_text('''function [() {
+  local args=("$@") index
+  for ((index = 1; index < ${#args[@]}; index++)); do
+    if [[ "${args[index - 1]}" == -S && "${args[index]}" == /run/user/1000/ssh-agent ]]; then
+      args[index]="$TEST_SSH_SOCKET"
+    fi
+  done
+  builtin [ "${args[@]}"
+}
+''')
+        for args in (("--ssh",), ("--ssh", "--profile", "pony"), ("exec", "a prompt", "--ssh")):
+            with self.subTest(args=args):
+                self.assert_success(self.launch(
+                    *args, BASH_ENV=str(bash_env), TEST_SSH_SOCKET=str(host_socket),
+                    CODEX_HOST_BROWSER="0", SSH_AUTH_SOCK="/ignored/host-agent",
+                ))
+                self.assertIn("/run/user/1000/ssh-agent:/ssh-agent", self.values(self.runs()[-1], "-v"))
+                self.assertIn("SSH_AUTH_SOCK=/ssh-agent", self.values(self.runs()[-1], "-e"))
+                if args[0] == "exec":
+                    self.assertEqual(self.runs()[-1][-2:], ["exec", "a prompt"])
+
+    def test_ssh_agent_accepts_equals_relative_paths_and_docker_access(self):
+        self.engine("docker")
+        host_socket = self.workspace / "agent socket"
+        listener = socket.socket(socket.AF_UNIX)
+        self.addCleanup(listener.close)
+        listener.bind(str(host_socket))
+        for args in (
+            (f"--ssh={host_socket}", "exec", "a prompt"),
+            ("--ssh", host_socket.name, "exec", "a prompt"),
+            ("--docker", "--ssh", str(host_socket), "exec", "a prompt"),
+        ):
+            with self.subTest(args=args):
+                self.assert_success(self.launch(
+                    *args, CODEX_HOST_BROWSER="0", DOCKER_CONTEXT_ENDPOINT=f"unix://{host_socket}",
+                ))
+                run = self.runs()[-1]
+                self.assertIn(f"{host_socket}:/ssh-agent", self.values(run, "-v"))
+                self.assertIn("SSH_AUTH_SOCK=/ssh-agent", self.values(run, "-e"))
+                self.assertEqual(run[-2:], ["exec", "a prompt"])
+                if "--docker" in args:
+                    self.assertIn(f"{host_socket}:/var/run/docker.sock", self.values(run, "-v"))
+
+    def test_ssh_agent_requires_an_existing_socket(self):
+        self.engine("docker")
+        host_socket = self.root / "not-a-socket"
+        for exists in (False, True):
+            with self.subTest(exists=exists):
+                if exists:
+                    host_socket.touch()
+                result = self.launch("--ssh", str(host_socket))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"--ssh socket not found or not a Unix socket: {host_socket}", result.stderr)
+                self.assertEqual(self.runs(), [])
+                self.assertFalse(self.state.exists())
+
+    def test_ssh_agent_rejects_empty_paths(self):
+        self.engine("docker")
+        for args in (("--ssh=",), ("--ssh", "")):
+            with self.subTest(args=args):
+                result = self.launch(*args)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("--ssh requires a non-empty socket path", result.stderr)
+                self.assertEqual(self.calls, [])
+
+    def test_ssh_flag_after_separator_is_forwarded_without_agent_access(self):
+        self.engine("docker")
+        self.assert_success(self.launch("exec", "--", "--ssh", "/missing/agent", CODEX_HOST_BROWSER="0"))
+        run = self.runs()[-1]
+        self.assertEqual(run[-4:], ["exec", "--", "--ssh", "/missing/agent"])
+        self.assertNotIn("SSH_AUTH_SOCK=/ssh-agent", self.values(run, "-e"))
+        self.assertFalse(any(mount.endswith(":/ssh-agent") for mount in self.values(run, "-v")))
+
     def test_host_browser_mounts_and_cleanup(self):
         self.engine("docker")
         self.assert_success(self.launch(BROWSER="firefox"))
