@@ -78,7 +78,7 @@ codex resume                       # select a saved session in this profile
 codex resume --all                  # include sessions from other working directories
 codex resume --last                 # resume the most recent session
 codex --profile pony               # start with the Ponytail plugin
-codex --profile mcp                # start with Kubernetes and Grafana MCP servers
+codex --profile mcp                # start with Kubernetes, Grafana, and Notion MCP servers
 codex --profile full               # start with Ponytail and both MCP servers
 codex --profile pr create "focus on the API changes"
 codex --profile pr describe "https://github.com/OWNER/REPO/pull/123"
@@ -237,20 +237,24 @@ Built-in profiles:
 
 - `default` - native notification hooks and commit-authorship instructions.
 - `mcp` - enables Kubernetes at `http://localhost:8080/mcp` and Grafana at
-  `http://localhost:18000/mcp` by default. Inherits the default hooks and
-  commit-authorship instructions. Start both MCP servers before launching
+  `http://localhost:18000/mcp`, plus Notion at `https://mcp.notion.com/mcp`.
+  Inherits the default hooks and
+  commit-authorship instructions. Start the Kubernetes and Grafana MCP servers before launching
   `codex --profile mcp`; the profile connects to them without starting them.
   Grafana sends `Host: localhost:8000` to match the MCP server's default Host
   allowlist when Docker maps host port 18000 to container port 8000. If your
   server uses another internal port or allowlist, update `http_headers` in
-  `profiles/mcp/config.toml` to match.
+  `profiles/mcp/config.toml` to match. Authenticate Notion with
+  `codex --profile mcp mcp login notion` and complete the browser OAuth flow
+  ([Notion setup guide](https://developers.notion.com/guides/mcp/get-started-with-mcp#codex-chatgpt)).
 - `pony` - installs the native
   [Ponytail Codex plugin](https://github.com/DietrichGebert/ponytail).
   Its enabled lifecycle hooks run without a manual trust step.
-- `full` - combines `pony` with both MCP servers from `mcp`, inheriting the
+- `full` - combines `pony` with all three MCP servers from `mcp`, inheriting the
   default hooks and commit-authorship instructions. Start both MCP servers
   before launching `codex --profile full`. Its `init.sh` links to the `pony`
-  file; its own `config.toml` configures the model and both MCP servers.
+  file; its own `config.toml` configures the model and all three MCP servers. Authenticate Notion with
+  `codex --profile full mcp login notion`.
 - `pr` - provides PR workflows using `codex exec`: `create`
   commits pending changes and opens/updates a draft PR without running tests;
   `describe` updates a PR's title/description and non-standard commit messages;
