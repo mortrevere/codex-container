@@ -233,7 +233,10 @@ Login/logout, management commands, help/version, and the debug shell skip cleanu
 
 Built-in profiles:
 
-`default`, `pony`, and `full` default to `gpt-6.1-sol` with high reasoning.
+All built-in profiles default to `gpt-6.2-sol` with medium reasoning for regular
+sessions and high reasoning for Plan mode. Codex supports a separate reasoning
+level for Plan mode, but no separate model default, so Plan mode also uses Sol.
+The PR workflow commands below retain their own model and reasoning defaults.
 
 - `default` - native notification hooks and commit-authorship instructions.
 - `mcp` - enables Kubernetes at `http://localhost:8080/mcp` and Grafana at
@@ -263,7 +266,7 @@ Built-in profiles:
   `{{EXTRA_INSTRUCTIONS}}` rendered by `command.sh`. Model and `-c` options
   go before the workflow name. `create` defaults to GPT-6-Luna with high
   reasoning; `describe` (also `description`) and `review` default to
-  GPT-6.1-Sol with low reasoning.
+  GPT-6.2-Sol with low reasoning.
   CLI model and reasoning overrides take precedence. Containers launched with
   this profile are limited to 1 CPU, including resumed sessions.
 
